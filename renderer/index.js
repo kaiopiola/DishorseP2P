@@ -64,7 +64,21 @@ function join() {
 
   console.log('[p2p] selfId=', selfId, 'entrando na sala:', roomName);
   try {
-    room = joinRoom({ appId: APP_ID }, roomName);
+    room = joinRoom(
+      {
+        appId: APP_ID,
+        // STUN públicos p/ atravessar NAT entre redes diferentes (serverless).
+        // Para NAT simétrico/CGNAT ainda pode ser necessário um TURN próprio.
+        rtcConfig: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+          ],
+        },
+      },
+      roomName
+    );
   } catch (err) {
     console.error('[p2p] falha ao entrar:', err);
     addMessage('erro', 'falha ao entrar: ' + err.message);

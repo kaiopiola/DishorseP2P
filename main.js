@@ -58,13 +58,12 @@ function createWindow() {
     global.__chosenSourceId = id;
   });
 
-  // Sala de teste opcional via env (para rodar 2 instâncias que se acham sozinhas)
+  // Sala de teste opcional via env (só a sala; o apelido vem do gate/localStorage).
+  // Útil para rodar 2 instâncias locais que se encontram sozinhas.
   const testRoom = process.env.TEST_ROOM;
   if (testRoom) {
     win.loadFile('index.html', {
-      search: `room=${encodeURIComponent(testRoom)}&nick=${encodeURIComponent(
-        process.env.TEST_NICK || 'tester'
-      )}`,
+      search: `room=${encodeURIComponent(testRoom)}`,
     });
   } else {
     win.loadFile('index.html');

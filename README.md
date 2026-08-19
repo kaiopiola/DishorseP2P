@@ -32,6 +32,31 @@ npm run dev      # abre o Electron (sem rebuild)
 3. Ative câmera ou compartilhe tela — o outro peer recebe o stream.
 4. Troque mensagens de texto.
 
+## Gerar executável Windows
+
+```bash
+npm run pack:win
+```
+
+Gera `release/P2P Chat-win32-x64/` (app desempacotado, ~265 MB). Zipe a pasta e
+envie para outra pessoa — ela só extrai e roda `P2P Chat.exe`, sem instalar nada.
+
+> Usamos **@electron/packager** (não electron-builder) de propósito: o
+> electron-builder baixa o `winCodeSign`, que exige criação de symlinks e falha
+> no Windows sem **Modo de Desenvolvedor**. O packager apenas copia o runtime, sem
+> assinatura. O `.exe` não é assinado, então o SmartScreen mostrará um aviso
+> ("Mais informações" → "Executar assim mesmo").
+
+## Testar entre redes diferentes
+
+O signaling (torrent) funciona pela internet sem configuração. Para a **mídia**,
+o WebRTC tenta conexão direta usando os servidores **STUN** públicos já
+configurados no `rtcConfig` (`renderer/index.js`). Isso cobre a maioria das redes
+domésticas. Se um dos lados estiver atrás de **NAT simétrico** ou **CGNAT** (comum
+em 4G/5G e alguns provedores), a conexão direta falha e seria necessário um
+servidor **TURN** (ex.: coturn) — o único ponto que não dá para eliminar 100% sem
+infra. Basta adicionar a entrada TURN ao `iceServers`.
+
 ## Como funciona
 
 - `trystero/torrent` → descoberta de peers e signaling, sem servidor seu.
