@@ -99,12 +99,13 @@ Decisões tomadas:
       RTCRtpSender.setParameters (maxBitrate/maxFramerate). Default: 720p/30fps.
       Muda ao vivo (applyConstraints) sem reabrir a transmissão.
 - [ ] Perfis rápidos (ex.: "Economia de dados") e indicador de bitrate atual
-- [ ] **Preview borrado das transmissões de tela** em vez de abrir o vídeo de
-      todos automaticamente; usuário clica para assistir e alterna entre elas
-      > Não anexar o <video> ao DOM enquanto não assistido = não decodifica
-      > (economiza CPU). Mostrar thumbnail/frame congelado borrado. Bandwidth
-      > ainda flui no mesh; reduzir de verdade exigiria pausar track/simulcast
-      > (avaliar sinalizar "quero/não quero receber" ao emissor).
+- [x] **Preview borrado das transmissões de tela**: telas dos outros aparecem
+      como poster borrado + "▶ assistir" no filmstrip (sem <video> ao vivo, não
+      decodifica); só a tela em foco toca no palco. A própria tela abre sozinha.
+      Poster = frame congelado ao sair de foco (canvas). Marca "no ar" na ativa.
+- [ ] (futuro) Reduzir também a BANDA das telas não assistidas: sinalizar ao
+      emissor "não estou assistindo" para ele pausar/baixar o envio (mesh não
+      reduz banda sozinho; hoje só o decode é evitado)
 
 ## 💾 Milestone 4 — Persistência local-first (CRDT)
 - [ ] Histórico de texto por canal com CRDT (Yjs/Automerge) sobre data channel

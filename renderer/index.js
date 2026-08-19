@@ -715,35 +715,44 @@ function setParticipantCamera(pid, stream) {
   renderStage();
 }
 
+// Telas aparecem como PREVIEW borrado no filmstrip (sem decodificar). Só a tela
+// em foco toca ao vivo no palco. A própria tela abre automaticamente; as dos
+// outros ficam como preview até o usuário clicar em "assistir".
 function addScreenTile(pid, stream) {
   const k = pid + ':screen';
+  const isLocal = pid === 'local';
   let t = tiles[k];
   if (!t) {
     const el = document.createElement('div');
-    el.className = 'tile screen';
-    const video = document.createElement('video');
-    video.autoplay = true;
-    video.playsInline = true;
-    video.muted = true;
-    video.autoPictureInPicture = true;
+    el.className = 'tile screen preview';
+    const poster = document.createElement('div');
+    poster.className = 'poster';
+    const play = document.createElement('div');
+    play.className = 'play-overlay';
+    play.innerHTML = '<span>▶ assistir</span>';
     const lab = document.createElement('span');
     lab.className = 'label';
-    const pip = document.createElement('button');
-    pip.className = 'pipbtn';
-    pip.textContent = '⧉';
-    pip.onclick = (e) => {
-      e.stopPropagation();
-      togglePip(video);
-    };
-    el.append(video, lab, pip);
+    el.append(poster, play, lab);
     el.onclick = () => setFocus(k);
-    t = tiles[k] = { el, video, lab, pip, kind: 'screen', peerId: pid, stream };
+    t = tiles[k] = { el, posterEl: poster, lab, kind: 'screen', peerId: pid, stream };
     filmstrip.appendChild(el);
   }
   t.stream = stream;
-  t.video.srcObject = stream;
   t.lab.textContent = `${nickOf(pid)} · tela`;
-  setFocus(k);
+  if (isLocal) setFocus(k); // só a própria tela abre sozinha
+  else renderStage(); // as dos outros ficam em preview
+}
+
+// Congela um frame do palco como poster (borrado) do tile de tela que sai de foco.
+function capturePoster(tile) {
+  try {
+    if (!stageVideo.videoWidth) return;
+    const c = document.createElement('canvas');
+    c.width = Math.min(320, stageVideo.videoWidth);
+    c.height = Math.round((c.width * stageVideo.videoHeight) / stageVideo.videoWidth);
+    c.getContext('2d').drawImage(stageVideo, 0, 0, c.width, c.height);
+    tile.posterEl.style.backgroundImage = `url(${c.toDataURL('image/jpeg', 0.5)})`;
+  } catch (e) {}
 }
 
 function refreshTileLabels(pid) {
@@ -760,6 +769,10 @@ function refreshTileLabels(pid) {
 }
 
 function setFocus(k) {
+  // ao sair de uma tela, congela seu último frame como poster do preview
+  if (focusedKey && focusedKey !== k && tiles[focusedKey]?.kind === 'screen') {
+    capturePoster(tiles[focusedKey]);
+  }
   focusedKey = k;
   renderStage();
 }
@@ -775,9 +788,10 @@ function removeTile(k) {
 function renderStage() {
   const keys = Object.keys(tiles);
   if (!focusedKey || !tiles[focusedKey]) {
+    // NÃO auto-focar telas dos outros (viram preview); prioriza participantes
     focusedKey =
-      keys.find((k) => tiles[k].kind === 'screen') ||
-      keys.find((k) => tiles[k].stream) ||
+      (tiles['local'] ? 'local' : null) ||
+      keys.find((k) => tiles[k].kind === 'participant') ||
       keys[0] ||
       null;
   }
@@ -795,6 +809,7 @@ function renderStage() {
   stage.classList.toggle('speaking', t.el.classList.contains('speaking'));
   if (t.stream) {
     stageVideo.srcObject = t.stream;
+    stageVideo.autoPictureInPicture = t.kind === 'screen'; // auto-PiP na tela assistida
     stageVideo.classList.toggle('mirror', t.kind === 'participant' && t.peerId === 'local');
     stageVideo.style.display = 'block';
     stageAvatar.style.display = 'none';
