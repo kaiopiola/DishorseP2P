@@ -59,17 +59,10 @@ infra.
 
 ### Configurar TURN
 
-Abra **⚙ Configurações** e preencha o servidor TURN, usuário e senha; clique em
-**Reconectar** para aplicar. Aceita múltiplas URLs separadas por vírgula, ex.:
-
-```
-turn:seu-host:3478,turns:seu-host:5349
-```
-
-Opções de TURN: subir um **coturn** próprio, ou usar um serviço (o
-[Metered OpenRelay](https://www.metered.ca/tools/openrelay/) oferece TURN gratuito
-para testes). Os dados ficam salvos em `localStorage`; a lista final de
-`iceServers` (STUN fixos + seu TURN) é montada em `buildIceServers()`.
+> A interface de TURN está **oculta por enquanto** (o bloco `#turnSection` em
+> `index.html` tem `display: none`). O mecanismo continua no código: para
+> reativar, basta remover esse `display: none`. A lista final de `iceServers`
+> (STUN fixos + TURN opcional) é montada em `buildIceServers()`.
 
 ## Como funciona
 
