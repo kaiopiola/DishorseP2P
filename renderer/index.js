@@ -143,6 +143,7 @@ $('join').onclick = join;
 $('nick').addEventListener('input', () => {
   refreshLabels('local');
   renderStage();
+  localStorage.setItem('p2pNick', $('nick').value);
 });
 
 // ---- Chat ---------------------------------------------------------------
@@ -524,11 +525,15 @@ function showSourcePicker(sources, onPick) {
   const list = $('sourceList');
   list.innerHTML = '';
   sources.forEach((s) => {
+    const isScreen = s.id.startsWith('screen:');
     const item = document.createElement('div');
     item.className = 'source-item';
-    item.innerHTML = `<img src="${s.thumbnail}" /><span>${escapeHtml(
-      s.name
-    )}</span>`;
+    item.innerHTML = `
+      <div class="thumb"><img src="${s.thumbnail}" /></div>
+      <div class="meta">
+        <span class="badge">${isScreen ? '🖥️ Tela' : '🪟 Janela'}</span>
+        <span class="name" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
+      </div>`;
     item.onclick = () => {
       modal.classList.add('hidden');
       onPick(s.id);
@@ -666,9 +671,49 @@ if (navigator.mediaDevices) {
 // ---- Auto-join na inicialização ----------------------------------------
 const params = new URLSearchParams(location.search);
 $('room').value = params.get('room') || DEFAULT_ROOM;
-if (params.get('nick')) $('nick').value = params.get('nick');
 
 updateMicButton();
 syncSettingsUI();
-join();
-applyMic();
+
+function connect() {
+  join();
+  applyMic();
+}
+
+// Gate de apelido: obrigatório na primeira vez (nada salvo em localStorage).
+function showNickGate() {
+  const modal = $('nickModal');
+  const input = $('nickInput');
+  modal.classList.remove('hidden');
+  input.focus();
+  const submit = () => {
+    const v = input.value.trim();
+    if (!v) {
+      input.classList.add('invalid');
+      input.focus();
+      return;
+    }
+    localStorage.setItem('p2pNick', v);
+    $('nick').value = v;
+    modal.classList.add('hidden');
+    connect();
+  };
+  $('nickConfirm').onclick = submit;
+  input.oninput = () => input.classList.remove('invalid');
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') submit();
+  };
+}
+
+const paramNick = params.get('nick');
+const storedNick = localStorage.getItem('p2pNick') || '';
+if (paramNick) {
+  $('nick').value = paramNick;
+  localStorage.setItem('p2pNick', paramNick);
+  connect();
+} else if (storedNick) {
+  $('nick').value = storedNick;
+  connect();
+} else {
+  showNickGate(); // primeira vez: exige apelido antes de conectar
+}

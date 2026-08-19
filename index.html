@@ -53,6 +53,16 @@
     <!-- áudio remoto (mic dos peers) fica aqui, sem UI -->
     <div id="audioSinks" style="display: none"></div>
 
+    <!-- gate de apelido (primeira vez) -->
+    <div id="nickModal" class="modal hidden">
+      <div class="modal-content nick-gate">
+        <h2>Bem-vindo 👋</h2>
+        <p>Escolha um apelido para entrar na sala.</p>
+        <input id="nickInput" placeholder="seu apelido" maxlength="24" autocomplete="off" />
+        <button id="nickConfirm">Entrar</button>
+      </div>
+    </div>
+
     <!-- configurações -->
     <div id="settingsModal" class="modal hidden">
       <div class="modal-content">
