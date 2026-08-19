@@ -333,22 +333,24 @@ function joinText(k) {
 
   // chat assinado
   const [send, get] = textRoom.makeAction('chat');
-  sendChat = async (text) => {
-    const sig = await identity.sign(text);
-    send({ text, sig });
+  sendChat = async (text, img) => {
+    const sig = await identity.sign(signContent(text, img));
+    send({ text, img, sig });
   };
   get(async (payload, pid) => {
     const id = textIdents[pid];
     const nick = id?.nick || pid.slice(0, 6);
-    const verified = id ? await identity.verify(id.pub, payload.sig, payload.text) : false;
-    pushMsg(k, nick, payload.text, false, verified);
+    const verified = id
+      ? await identity.verify(id.pub, payload.sig, signContent(payload.text, payload.img))
+      : false;
+    pushMsg(k, nick, payload.text, false, verified, payload.img);
   });
 
   renderMessages(k);
 }
 
-function pushMsg(k, from, text, sys, verified) {
-  const m = { from, text, sys, verified };
+function pushMsg(k, from, text, sys, verified, img) {
+  const m = { from, text, sys, verified, img };
   (messagesByChannel[k] || (messagesByChannel[k] = [])).push(m);
   if (k === textRoomKey && !textView.classList.contains('hidden')) appendMsgEl(m);
 }
@@ -358,29 +360,62 @@ function renderMessages(k) {
   (messagesByChannel[k] || []).forEach(appendMsgEl);
 }
 
-function appendMsgEl({ from, text, sys, verified }) {
-  const li = document.createElement('li');
+// monta o corpo de uma mensagem (texto/imagem/selo) em um container
+function fillMsgEl(el, { from, text, sys, verified, img }) {
   if (sys) {
-    li.className = 'sys';
-    li.textContent = text;
-  } else {
-    const badge = verified
-      ? '<span class="verified" title="assinatura verificada">✓</span> '
-      : '<span class="unverified" title="mensagem sem assinatura verificada">⚠</span> ';
-    li.innerHTML = `${badge}<b>${escapeHtml(from)}:</b> ${escapeHtml(text)}`;
+    el.className = (el.className + ' sys').trim();
+    el.textContent = text;
+    return;
   }
+  const badge = verified
+    ? '<span class="verified" title="assinatura verificada">✓</span> '
+    : '<span class="unverified" title="mensagem sem assinatura verificada">⚠</span> ';
+  let body = `${badge}<b>${escapeHtml(from)}:</b>`;
+  if (text) body += ` ${escapeHtml(text)}`;
+  el.innerHTML = body;
+  if (img) {
+    const image = document.createElement('img');
+    image.className = 'chat-img';
+    image.src = img;
+    image.onclick = () => openImageViewer(img);
+    el.appendChild(image);
+  }
+}
+
+function appendMsgEl(m) {
+  const li = document.createElement('li');
+  fillMsgEl(li, m);
   messages.append(li);
   messages.scrollTop = messages.scrollHeight;
 }
+
+function openImageViewer(src) {
+  $('imageViewerImg').src = src;
+  openModal('imageModal');
+}
+$('imageModal').onclick = () => closeModal('imageModal');
 
 $('chatForm').onsubmit = (e) => {
   e.preventDefault();
   const input = $('chatInput');
   const text = input.value.trim();
   if (!text || !sendChat) return;
-  sendChat(text);
-  pushMsg(textRoomKey, `${myNick()} (você)`, text, false, true);
+  sendChat(text, null);
+  pushMsg(textRoomKey, `${myNick()} (você)`, text, false, true, null);
   input.value = '';
+};
+$('chatAttach').onclick = () => $('chatImageInput').click();
+$('chatImageInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !sendChat) return;
+  try {
+    const img = await imageFileToChat(file);
+    sendChat('', img);
+    pushMsg(textRoomKey, `${myNick()} (você)`, '', false, true, img);
+  } catch (err) {
+    pushSys('imagem: ' + err.message);
+  }
+  e.target.value = '';
 };
 
 // ---- Canal de voz -------------------------------------------------------
@@ -591,15 +626,17 @@ function joinVoiceChat(k) {
   const announce = attachHandshake(voiceChatRoom, voiceChatIdents);
   vchatAnnounceIdent = announce;
   const [send, get] = voiceChatRoom.makeAction('chat');
-  voiceChatSend = async (text) => {
-    const sig = await identity.sign(text);
-    send({ text, sig });
+  voiceChatSend = async (text, img) => {
+    const sig = await identity.sign(signContent(text, img));
+    send({ text, img, sig });
   };
   get(async (payload, pid) => {
     const id = voiceChatIdents[pid];
     const nick = id?.nick || pid.slice(0, 6);
-    const verified = id ? await identity.verify(id.pub, payload.sig, payload.text) : false;
-    voiceChatMsgs.push({ from: nick, text: payload.text, verified });
+    const verified = id
+      ? await identity.verify(id.pub, payload.sig, signContent(payload.text, payload.img))
+      : false;
+    voiceChatMsgs.push({ from: nick, text: payload.text, verified, img: payload.img });
     renderVoiceChat();
   });
   voiceChatRoom.onPeerJoin((pid) => {
@@ -629,13 +666,10 @@ function renderVoiceChat() {
   if (!box) return;
   box.innerHTML = '';
   voiceChatMsgs.forEach((m) => {
-    const li = document.createElement('div');
-    li.className = 'vc-msg';
-    const badge = m.verified
-      ? '<span class="verified">✓</span> '
-      : '<span class="unverified">⚠</span> ';
-    li.innerHTML = `${badge}<b>${escapeHtml(m.from)}:</b> ${escapeHtml(m.text)}`;
-    box.append(li);
+    const div = document.createElement('div');
+    div.className = 'vc-msg';
+    fillMsgEl(div, m);
+    box.append(div);
   });
   box.scrollTop = box.scrollHeight;
 }
@@ -645,10 +679,24 @@ $('voiceChatForm').onsubmit = (e) => {
   const input = $('voiceChatInput');
   const text = input.value.trim();
   if (!text || !voiceChatSend) return;
-  voiceChatSend(text);
+  voiceChatSend(text, null);
   voiceChatMsgs.push({ from: `${myNick()} (você)`, text, verified: true });
   renderVoiceChat();
   input.value = '';
+};
+$('voiceChatAttach').onclick = () => $('voiceChatImageInput').click();
+$('voiceChatImageInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !voiceChatSend) return;
+  try {
+    const img = await imageFileToChat(file);
+    voiceChatSend('', img);
+    voiceChatMsgs.push({ from: `${myNick()} (você)`, text: '', verified: true, img });
+    renderVoiceChat();
+  } catch (err) {
+    pushSys('imagem: ' + err.message);
+  }
+  e.target.value = '';
 };
 $('voiceChatToggle').onclick = () => $('voiceChat').classList.toggle('collapsed');
 
@@ -1791,6 +1839,23 @@ async function imageFileToAvatar(file) {
   const s = Math.min(bm.width, bm.height);
   ctx.drawImage(bm, (bm.width - s) / 2, (bm.height - s) / 2, s, s, 0, 0, size, size);
   return c.toDataURL('image/webp', 0.8);
+}
+// converte imagem para WebP redimensionado (envio no chat)
+async function imageFileToChat(file) {
+  const bm = await createImageBitmap(file);
+  const max = 1280;
+  const scale = Math.min(1, max / Math.max(bm.width, bm.height));
+  const w = Math.round(bm.width * scale);
+  const h = Math.round(bm.height * scale);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  c.getContext('2d').drawImage(bm, 0, 0, w, h);
+  return c.toDataURL('image/webp', 0.7);
+}
+// conteúdo assinável de uma mensagem (texto e/ou imagem)
+function signContent(text, img) {
+  return (text || '') + ' ' + (img || '');
 }
 
 // payload de identidade (inclui avatar/bio, tudo atrelado à chave verificada)

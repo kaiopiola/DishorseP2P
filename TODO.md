@@ -98,10 +98,9 @@ Decisões tomadas:
 - [x] **Bio de perfil** até 100 caracteres — modal de perfil (editar o meu ao
       clicar na me-info; ver o de outro ao clicar no membro da call)
 - [x] Editar apelido no próprio modal de perfil
-- [ ] **Envio de imagens no chat de texto**
-      > Converter para WebP + comprimir/redimensionar antes de enviar pelo data
-      > channel; assinar como as mensagens. Cuidar do tamanho (chunk) e do limite
-      > de payload do Trystero.
+- [x] **Envio de imagens no chat** (texto e chat da voz) — 📎 anexa imagem,
+      converte para WebP ≤1280px, assina (texto+img) e envia; Trystero faz o
+      chunking do payload; thumbnail no chat + visualizador em tela cheia
 
 ## 💬 Mensagens diretas / conversas privadas (novo)
 - [ ] DM 1:1 entre dois usuários (sala derivada das duas chaves públicas)
