@@ -183,6 +183,31 @@
       </div>
     </div>
 
+    <!-- perfil (editar o meu / ver de outro) -->
+    <div id="profileModal" class="modal hidden">
+      <div class="modal-content profile-card">
+        <div class="avatar big" id="profileAvatar"></div>
+        <h2 id="profileNick">—</h2>
+        <p class="hint" id="profileFp"></p>
+        <div id="profileEdit">
+          <input type="file" id="profileAvatarInput" accept="image/*" style="display: none" />
+          <button id="profileAvatarBtn" class="secondary">Trocar avatar</button>
+          <label class="field-label" for="profileNickInput">Apelido</label>
+          <input id="profileNickInput" maxlength="24" autocomplete="off" />
+          <label class="field-label" for="profileBio">Bio <span class="hint" id="bioCount">0/100</span></label>
+          <textarea id="profileBio" maxlength="100" rows="3" placeholder="Fale um pouco sobre você (até 100 caracteres)"></textarea>
+          <div class="settings-actions">
+            <button id="profileSave">Salvar</button>
+            <button id="profileCancel">Fechar</button>
+          </div>
+        </div>
+        <div id="profileView">
+          <p id="profileBioView"></p>
+          <button id="profileViewClose">Fechar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- prompt de texto genérico -->
     <div id="promptModal" class="modal hidden">
       <div class="modal-content">

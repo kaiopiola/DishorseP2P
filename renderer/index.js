@@ -221,12 +221,12 @@ function voiceMemberEl(pid) {
   d.id = 'vm-' + pid;
   const av = document.createElement('div');
   av.className = 'avatar';
-  av.textContent = initialOf(nickOf(pid));
-  av.style.background = `hsl(${hueOf(colorKey(pid))} 55% 45%)`;
+  applyAvatarEl(av, pid);
   const nm = document.createElement('span');
   nm.className = 'vm-name';
   nm.textContent = pid === 'local' ? `${nickOf(pid)} (você)` : nickOf(pid);
   d.append(av, nm);
+  d.onclick = () => (pid === 'local' ? openMyProfile() : openPeerProfile(pid));
 
   const right = document.createElement('span');
   right.className = 'vm-right';
@@ -314,12 +314,12 @@ function joinText(k) {
   const announced = new Set();
   const announce = async (target) => {
     if (target) announced.add(target);
-    const sig = await identity.sign(identity.pub());
-    sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
+    sendIdent(await identPayload(), target);
   };
+  textAnnounceIdent = announce;
   getIdent(async (msg, pid) => {
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
-    textIdents[pid] = { pub: msg.pub, nick: msg.nick, verified };
+    textIdents[pid] = { pub: msg.pub, nick: msg.nick, verified, avatar: msg.avatar, bio: msg.bio };
     if (!announced.has(pid)) announce(pid); // responde se meu anúncio se perdeu
   });
   textAnnounceMan = manifestSync(textRoom, parseKey(k).spaceId);
@@ -465,13 +465,15 @@ function setupVoiceRoom(room, spaceId) {
   const announced = new Set(); // peers a quem já anunciei minha identidade
   const announce = async (target) => {
     if (target) announced.add(target);
-    const sig = await identity.sign(identity.pub());
-    sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
+    sendIdent(await identPayload(), target);
   };
+  if (voice) voice.announceIdent = announce;
   getIdent(async (msg, pid) => {
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
     const prev = voiceParticipants[pid] || {};
-    voiceParticipants[pid] = { pub: msg.pub, nick: msg.nick, verified, state: prev.state };
+    voiceParticipants[pid] = {
+      pub: msg.pub, nick: msg.nick, verified, state: prev.state, avatar: msg.avatar, bio: msg.bio,
+    };
     if (isBannedPub(msg.pub)) return removeParticipant(pid); // cooperativo
     if (!announced.has(pid)) announce(pid); // meu anúncio pode ter se perdido: respondo
     refreshTileLabels(pid);
@@ -570,12 +572,11 @@ function attachHandshake(room, identsMap) {
   const announced = new Set();
   const announce = async (target) => {
     if (target) announced.add(target);
-    const sig = await identity.sign(identity.pub());
-    sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
+    sendIdent(await identPayload(), target);
   };
   getIdent(async (msg, pid) => {
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
-    identsMap[pid] = { pub: msg.pub, nick: msg.nick, verified };
+    identsMap[pid] = { pub: msg.pub, nick: msg.nick, verified, avatar: msg.avatar, bio: msg.bio };
     if (!announced.has(pid)) announce(pid);
   });
   return announce;
@@ -588,6 +589,7 @@ function joinVoiceChat(k) {
     'vchat:' + k
   );
   const announce = attachHandshake(voiceChatRoom, voiceChatIdents);
+  vchatAnnounceIdent = announce;
   const [send, get] = voiceChatRoom.makeAction('chat');
   voiceChatSend = async (text) => {
     const sig = await identity.sign(text);
@@ -927,8 +929,7 @@ function refreshTileLabels(pid) {
     const name = nickOf(pid);
     const check = verifiedOf(pid) ? ' ✓' : '';
     t.lab.textContent = (pid === 'local' ? `${name} (você)` : name) + check;
-    t.avatar.textContent = initialOf(name);
-    t.avatar.style.background = `hsl(${hueOf(colorKey(pid))} 55% 45%)`;
+    applyAvatarEl(t.avatar, pid);
   }
   const st = tiles[pid + ':screen'];
   if (st) st.lab.textContent = `${nickOf(pid)} · tela`;
@@ -1001,8 +1002,7 @@ function renderStage() {
     stageVideo.style.display = 'block';
     stageAvatar.style.display = 'none';
   } else {
-    stageAvatar.textContent = initialOf(nickOf(t.peerId));
-    stageAvatar.style.background = `hsl(${hueOf(colorKey(t.peerId))} 55% 45%)`;
+    applyAvatarEl(stageAvatar, t.peerId);
     stageVideo.style.display = 'none';
     stageAvatar.style.display = 'flex';
   }
@@ -1615,6 +1615,63 @@ $('menuBanned').onclick = () => {
   openBanned();
 };
 $('bannedClose').onclick = () => closeModal('bannedModal');
+
+// ---- Perfil: editar o meu / ver o de outro ------------------------------
+let pendingAvatar = null;
+function openMyProfile() {
+  applyAvatarEl($('profileAvatar'), 'local');
+  $('profileNick').textContent = myNick();
+  $('profileFp').textContent = '#' + identity.fingerprint();
+  $('profileNickInput').value = myNick();
+  $('profileBio').value = profile.bio || '';
+  $('bioCount').textContent = `${($('profileBio').value || '').length}/100`;
+  pendingAvatar = null;
+  $('profileEdit').style.display = '';
+  $('profileView').style.display = 'none';
+  openModal('profileModal');
+}
+function openPeerProfile(pid) {
+  applyAvatarEl($('profileAvatar'), pid);
+  $('profileNick').textContent = nickOf(pid) + (verifiedOf(pid) ? ' ✓' : '');
+  $('profileFp').textContent = pubOf(pid) ? '#' + identity.fingerprint(pubOf(pid)) : '';
+  $('profileBioView').textContent = bioOf(pid) || 'Sem bio.';
+  $('profileEdit').style.display = 'none';
+  $('profileView').style.display = '';
+  openModal('profileModal');
+}
+$('meBar').querySelector('.me-info').onclick = openMyProfile;
+$('profileCancel').onclick = () => closeModal('profileModal');
+$('profileViewClose').onclick = () => closeModal('profileModal');
+$('profileAvatarBtn').onclick = () => $('profileAvatarInput').click();
+$('profileAvatarInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    pendingAvatar = await imageFileToAvatar(file);
+    $('profileAvatar').style.backgroundImage = `url(${pendingAvatar})`;
+    $('profileAvatar').style.backgroundSize = 'cover';
+    $('profileAvatar').style.backgroundPosition = 'center';
+    $('profileAvatar').textContent = '';
+  } catch (err) {
+    pushSys('avatar: ' + err.message);
+  }
+};
+$('profileBio').oninput = () => {
+  $('bioCount').textContent = `${$('profileBio').value.length}/100`;
+};
+$('profileSave').onclick = () => {
+  const nick = $('profileNickInput').value.trim();
+  if (nick) store.setNick(nick);
+  profile.bio = $('profileBio').value.trim();
+  if (pendingAvatar) profile.avatar = pendingAvatar;
+  saveProfile();
+  closeModal('profileModal');
+  renderMeBar();
+  refreshTileLabels('local');
+  renderChannels();
+  renderStage();
+  broadcastIdentity(); // peers recebem o novo perfil
+};
 $('menuCopyInvite').onclick = async () => {
   const code = store.encodeInvite(getSpace(currentSpaceId));
   try {
@@ -1694,12 +1751,66 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
   );
 }
+// ---- Perfil (avatar/bio) ------------------------------------------------
+let profile = {};
+try {
+  profile = JSON.parse(localStorage.getItem('p2pProfile') || '{}');
+} catch (e) {}
+function saveProfile() {
+  localStorage.setItem('p2pProfile', JSON.stringify(profile));
+}
+function avatarUrlOf(pid) {
+  return pid === 'local' ? profile.avatar || '' : voiceParticipants[pid]?.avatar || '';
+}
+function bioOf(pid) {
+  return pid === 'local' ? profile.bio || '' : voiceParticipants[pid]?.bio || '';
+}
+// aplica avatar de imagem (se houver) ou inicial+cor no elemento .avatar
+function applyAvatarEl(el, pid) {
+  const url = avatarUrlOf(pid);
+  if (url) {
+    el.style.backgroundImage = `url(${url})`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.style.backgroundColor = 'transparent';
+    el.textContent = '';
+  } else {
+    el.style.backgroundImage = 'none';
+    el.style.backgroundColor = `hsl(${hueOf(colorKey(pid))} 55% 45%)`;
+    el.textContent = initialOf(nickOf(pid));
+  }
+}
+// converte um arquivo de imagem em WebP quadrado (avatar leve)
+async function imageFileToAvatar(file) {
+  const bm = await createImageBitmap(file);
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext('2d');
+  const s = Math.min(bm.width, bm.height);
+  ctx.drawImage(bm, (bm.width - s) / 2, (bm.height - s) / 2, s, s, 0, 0, size, size);
+  return c.toDataURL('image/webp', 0.8);
+}
+
+// payload de identidade (inclui avatar/bio, tudo atrelado à chave verificada)
+async function identPayload() {
+  const sig = await identity.sign(identity.pub());
+  return { pub: identity.pub(), nick: myNick(), sig, avatar: profile.avatar || '', bio: profile.bio || '' };
+}
+// reanuncia minha identidade em todas as salas ativas (após mudar perfil/nick)
+let textAnnounceIdent = null;
+let vchatAnnounceIdent = null;
+function broadcastIdentity() {
+  if (voice && voice.announceIdent) voice.announceIdent();
+  if (textAnnounceIdent) textAnnounceIdent();
+  if (vchatAnnounceIdent) vchatAnnounceIdent();
+}
+
 function renderMeBar() {
   $('meNick').textContent = myNick();
   $('meNick').title = 'Sua identidade · #' + identity.fingerprint();
-  const av = $('meAvatar');
-  av.textContent = initialOf(myNick());
-  av.style.background = `hsl(${hueOf(identity.pub() || 'local')} 55% 45%)`;
+  applyAvatarEl($('meAvatar'), 'local');
 }
 
 // ========================================================================

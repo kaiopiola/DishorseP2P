@@ -124,7 +124,8 @@ input, select, button { font-family: inherit; }
   height: 52px; flex: 0 0 52px; display: flex; align-items: center; justify-content: space-between;
   padding: 0 10px; background: #191b21;
 }
-.me-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.me-info { display: flex; align-items: center; gap: 8px; overflow: hidden; cursor: pointer; border-radius: 6px; padding: 2px 4px; }
+.me-info:hover { background: rgba(255,255,255,0.05); }
 .me-info span { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .me-actions { display: flex; align-items: center; gap: 2px; }
 .me-bar button { background: none; border: none; color: var(--txt-dim); font-size: 16px; padding: 5px 6px; border-radius: 6px; }
@@ -257,6 +258,18 @@ p.hint { margin: 4px 0 14px; }
 .settings-actions button:hover { background: #434855; }
 .settings-actions button.danger { background: #5b1a1a; border-color: var(--danger); }
 #btnReconnect { width: 100%; margin-top: 4px; padding: 10px; border-radius: 8px; border: 1px solid var(--green); background: #14532d; color: #fff; }
+
+.profile-card { text-align: center; min-width: 320px; max-width: 360px; }
+.profile-card .avatar.big { margin: 0 auto 12px; }
+.profile-card h2 { margin: 0 0 2px; }
+.profile-card .field-label { display: block; text-align: left; font-size: 13px; color: var(--txt-dim); margin: 12px 0 5px; }
+.profile-card input, .profile-card textarea { width: 100%; }
+.profile-card textarea { resize: vertical; padding: 10px 12px; border-radius: 8px; border: 1px solid #3a3f4a; background: #14171d; color: var(--txt); font-size: 14px; font-family: inherit; }
+.profile-card button.secondary { background: #383c46; border: 1px solid #3a3f4a; color: var(--txt); border-radius: 8px; padding: 8px 14px; margin-bottom: 4px; }
+.profile-card button.secondary:hover { background: #434855; }
+#profileBioView { color: var(--txt); font-size: 14px; margin: 10px 0 16px; min-height: 20px; }
+#profileView button, #profileEdit { }
+#profileViewClose { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #3a3f4a; background: #383c46; color: var(--txt); }
 
 .nick-gate { text-align: center; min-width: 340px; }
 .nick-gate p { color: var(--txt-dim); font-size: 14px; margin: 0 0 16px; }

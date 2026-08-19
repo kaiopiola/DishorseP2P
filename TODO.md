@@ -92,15 +92,16 @@ Decisões tomadas:
 - [x] Desativar o menu superior padrão do Electron
 - [ ] (ver seção "Segundo plano & inicialização")
 
-## 👤 Perfil & mídia (novo)
-- [ ] **Avatar de imagem** personalizado, atrelado à identidade
-      > Converter para **WebP** e comprimir no envio (canvas.toBlob('image/webp', q));
-      > redimensionar (ex.: máx 256px) para manter leve. Propagar no handshake.
-- [ ] **Bio de perfil** até ~100 caracteres (exibir no perfil/hover)
+## 👤 Perfil & mídia
+- [x] **Avatar de imagem** personalizado — upload → WebP 128px quadrado (canvas
+      toDataURL); atrelado à identidade e propagado no handshake (ident)
+- [x] **Bio de perfil** até 100 caracteres — modal de perfil (editar o meu ao
+      clicar na me-info; ver o de outro ao clicar no membro da call)
+- [x] Editar apelido no próprio modal de perfil
 - [ ] **Envio de imagens no chat de texto**
-      > Também converter para WebP + comprimir/redimensionar antes de enviar pelo
-      > data channel; assinar como as mensagens de texto. Cuidar do tamanho (chunk
-      > se necessário) e de limites de payload do Trystero.
+      > Converter para WebP + comprimir/redimensionar antes de enviar pelo data
+      > channel; assinar como as mensagens. Cuidar do tamanho (chunk) e do limite
+      > de payload do Trystero.
 
 ## 💬 Mensagens diretas / conversas privadas (novo)
 - [ ] DM 1:1 entre dois usuários (sala derivada das duas chaves públicas)
