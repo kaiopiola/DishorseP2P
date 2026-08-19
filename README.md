@@ -53,6 +53,11 @@ npm run dev      # abre o Electron (sem rebuild)
   global **⧉ PiP** nos controles, que prioriza a tela compartilhada. Telas têm
   `autoPictureInPicture`: ao trocar o foco para outra janela, a tela do peer
   entra em PiP flutuante automaticamente.
+- **Bandeja de participantes** (estilo Discord): todos os presentes aparecem no
+  filmstrip inferior. Quem está sem câmera é mostrado como um **avatar circular**
+  com a inicial do apelido (cor derivada do id). Quem está falando ganha uma
+  **borda verde** por detecção de voz (VAD via Web Audio API — `AnalyserNode`).
+  O palco espelha o participante/tela em foco, então ninguém sai da bandeja.
 
 ## Limitações conhecidas
 

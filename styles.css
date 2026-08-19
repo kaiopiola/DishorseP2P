@@ -42,10 +42,22 @@ main { flex: 1; display: flex; min-height: 0; }
   border-radius: 10px;
   overflow: hidden;
   position: relative;
+  border: 2px solid transparent;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-.stage .tile { width: 100%; height: 100%; }
-.stage .tile video { object-fit: contain; }
+.stage.speaking { border-color: #22c55e; box-shadow: inset 0 0 0 1px #22c55e, 0 0 18px rgba(34,197,94,0.5); }
+#stageVideo { width: 100%; height: 100%; object-fit: contain; background: #000; }
+#stageVideo.mirror { transform: scaleX(-1); }
 .placeholder { color: #555; font-size: 14px; text-align: center; padding: 20px; }
+
+/* avatar circular com a inicial do apelido */
+.avatar {
+  width: 64px; height: 64px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; font-weight: 600; color: #fff;
+  background: #444; user-select: none;
+}
+.avatar.big { width: 140px; height: 140px; font-size: 58px; }
 
 .filmstrip {
   display: flex;
@@ -59,10 +71,17 @@ main { flex: 1; display: flex; min-height: 0; }
 .filmstrip .tile { flex: 0 0 200px; height: 112px; }
 .filmstrip .tile video { object-fit: cover; }
 
-.tile { position: relative; background: #000; border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid transparent; }
-.filmstrip .tile:hover { border-color: #4ade80; }
-.tile.focused { cursor: default; }
-.tile video { width: 100%; height: 100%; display: block; background: #000; }
+.tile {
+  position: relative; background: #14171d; border-radius: 8px; overflow: hidden;
+  cursor: pointer; border: 2px solid transparent;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.filmstrip .tile:hover { border-color: #64748b; }
+.tile.focused { border-color: #3b82f6; }
+/* borda verde ao falar — tem prioridade sobre foco/hover */
+.tile.speaking { border-color: #22c55e; box-shadow: 0 0 0 1px #22c55e, 0 0 12px 1px rgba(34,197,94,0.55); }
+.tile video { width: 100%; height: 100%; display: block; background: #000; object-fit: cover; }
 .tile video.mirror { transform: scaleX(-1); }
 .tile .label {
   position: absolute; bottom: 6px; left: 6px;

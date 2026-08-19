@@ -7,44 +7,53 @@ import { joinRoom, selfId } from 'trystero/torrent';
 
 const APP_ID = 'webrtc-p2p-chat-demo';
 const DEFAULT_ROOM = 'daggerfall';
+const SPEAKING_THRESHOLD = 12; // sensibilidade da detecção de voz (0-255)
+const SPEAKING_HANGOVER = 300; // ms que a borda verde permanece após a fala
 
 // ---- Estado -------------------------------------------------------------
 let room = null;
 let sendChat = null;
 let peerCount = 0;
-const peerNicks = {}; // peerId -> apelido
+const peerNicks = {}; // peerId -> apelido ('local' = eu)
 
 // Streams locais de saída, independentes entre si.
-let micStream = null; // áudio (voz)
+let micStream = null;
 let micEnabled = false;
-let camStream = null; // vídeo da câmera
-let screenStream = null; // vídeo da tela/janela
+let camStream = null;
+let screenStream = null;
 
-// ---- Tiles de vídeo (palco + filmstrip) --------------------------------
-// key -> { el, video, kind, isLocal }
+// ---- Tiles (bandeja de participantes + telas) --------------------------
+// key -> { el, video, avatar?, lab, pip, kind:'participant'|'screen', peerId, stream }
 const tiles = {};
 let focusedKey = null;
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage');
+const stageVideo = $('stageVideo');
+const stageAvatar = $('stageAvatar');
 const filmstrip = $('filmstrip');
 const placeholder = $('placeholder');
 const status = $('status');
 const messages = $('messages');
 const audioSinks = $('audioSinks');
 
+const nick = () => $('nick').value || selfId.slice(0, 6);
+const nameOf = (peerId) =>
+  peerNicks[peerId] || (peerId === 'local' ? nick() : peerId.slice(0, 6));
+const initialOf = (s) => ((s || '?').trim().charAt(0) || '?').toUpperCase();
+const hueOf = (s) => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+};
+
 function updateStatus() {
-  if (!room) {
-    status.textContent = 'desconectado';
-    return;
-  }
+  if (!room) return (status.textContent = 'desconectado');
   status.textContent =
     peerCount > 0
       ? `conectado · ${peerCount} peer(s)`
       : 'conectado · aguardando peers...';
 }
-
-const nick = () => $('nick').value || selfId.slice(0, 6);
 
 // ---- Entrar na sala -----------------------------------------------------
 function join() {
@@ -65,21 +74,19 @@ function join() {
   updateStatus();
   enableControls(true);
 
-  // Canal de texto
+  ensureParticipant('local'); // meu próprio tile
+  focusedKey = 'local';
+  renderStage();
+
   const [send, get] = room.makeAction('chat');
   sendChat = send;
-  get((msg, peerId) => addMessage(peerNicks[peerId] || peerId.slice(0, 6), msg));
+  get((msg, peerId) => addMessage(nameOf(peerId), msg));
 
-  // Troca de apelidos
   const [sendNick, getNick] = room.makeAction('nick');
   getNick((name, peerId) => {
     peerNicks[peerId] = name;
-    // atualiza rótulos de tiles desse peer
-    Object.entries(tiles).forEach(([key, t]) => {
-      if (key.startsWith(peerId + ':')) {
-        t.el.querySelector('.label').textContent = `${name} · ${t.kind}`;
-      }
-    });
+    ensureParticipant(peerId);
+    refreshLabels(peerId);
   });
 
   room.onPeerJoin((peerId) => {
@@ -87,8 +94,8 @@ function join() {
     updateStatus();
     console.log('[p2p] peer entrou:', peerId);
     addMessage('sistema', `${peerId.slice(0, 6)} entrou`);
+    ensureParticipant(peerId);
     sendNick(nick());
-    // (re)envia todas as minhas mídias ativas ao novo peer, com metadados
     if (micStream) room.addStream(micStream, peerId, { kind: 'mic' });
     if (camStream) room.addStream(camStream, peerId, { kind: 'camera' });
     if (screenStream) room.addStream(screenStream, peerId, { kind: 'screen' });
@@ -98,23 +105,19 @@ function join() {
     peerCount = Math.max(0, peerCount - 1);
     updateStatus();
     console.log('[p2p] peer saiu:', peerId);
-    addMessage('sistema', `${peerNicks[peerId] || peerId.slice(0, 6)} saiu`);
-    // remove tiles e áudio desse peer
-    Object.keys(tiles).forEach((key) => {
-      if (key.startsWith(peerId + ':')) removeTile(key);
-    });
+    addMessage('sistema', `${nameOf(peerId)} saiu`);
+    detachVAD(peerId);
+    removeTile(peerId); // participante
+    removeTile(peerId + ':screen'); // tela dele, se houver
     const a = document.getElementById('audio-' + peerId);
     if (a) a.remove();
     delete peerNicks[peerId];
+    renderStage();
   });
 
-  // Streams remotos
   room.onPeerStream((stream, peerId, meta) => {
     const kind = (meta && meta.kind) || 'camera';
-    const label = peerNicks[peerId] || peerId.slice(0, 6);
-
     if (kind === 'mic') {
-      // áudio: toca via <audio>, sem tile de vídeo
       let a = document.getElementById('audio-' + peerId);
       if (!a) {
         a = document.createElement('audio');
@@ -123,24 +126,23 @@ function join() {
         audioSinks.appendChild(a);
       }
       a.srcObject = stream;
-      return;
+      ensureParticipant(peerId);
+      attachVAD(peerId, stream); // acende a borda verde quando falar
+    } else if (kind === 'screen') {
+      addScreenTile(peerId, stream);
+      onVideoEnded(stream, () => removeTile(peerId + ':screen'));
+    } else {
+      setParticipantCamera(peerId, stream);
+      onVideoEnded(stream, () => setParticipantCamera(peerId, null));
     }
-
-    const key = `${peerId}:${kind}`;
-    addOrUpdateTile(key, stream, {
-      label: `${label} · ${kind}`,
-      kind,
-      isLocal: false,
-      autoFocus: kind === 'screen',
-    });
-    // remove o tile se a faixa remota terminar (peer parou de compartilhar)
-    stream.getVideoTracks().forEach((t) =>
-      t.addEventListener('ended', () => removeTile(key))
-    );
   });
 }
 
 $('join').onclick = join;
+$('nick').addEventListener('input', () => {
+  refreshLabels('local');
+  renderStage();
+});
 
 // ---- Chat ---------------------------------------------------------------
 $('chatForm').onsubmit = (e) => {
@@ -159,6 +161,8 @@ async function startMic() {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     micEnabled = true;
     if (room) room.addStream(micStream, null, { kind: 'mic' });
+    ensureParticipant('local');
+    attachVAD('local', micStream);
     updateMicButton();
   } catch (err) {
     addMessage('erro', 'microfone: ' + err.message);
@@ -167,7 +171,7 @@ async function startMic() {
 }
 
 $('btnMic').onclick = () => {
-  if (!micStream) return startMic(); // caso a permissão tenha falhado antes
+  if (!micStream) return startMic();
   micEnabled = !micEnabled;
   micStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled));
   updateMicButton();
@@ -195,12 +199,7 @@ $('btnCam').onclick = async () => {
   try {
     camStream = await navigator.mediaDevices.getUserMedia({ video: true });
     if (room) room.addStream(camStream, null, { kind: 'camera' });
-    addOrUpdateTile('local:camera', camStream, {
-      label: 'você · câmera',
-      kind: 'camera',
-      isLocal: true,
-      autoFocus: true,
-    });
+    setParticipantCamera('local', camStream);
     camStream.getVideoTracks()[0].addEventListener('ended', stopCam);
     $('btnCam').classList.add('active');
   } catch (err) {
@@ -213,7 +212,7 @@ function stopCam() {
   if (room) room.removeStream(camStream);
   camStream.getTracks().forEach((t) => t.stop());
   camStream = null;
-  removeTile('local:camera');
+  setParticipantCamera('local', null);
   $('btnCam').classList.remove('active');
 }
 
@@ -229,12 +228,7 @@ $('btnScreen').onclick = async () => {
         audio: false,
       });
       if (room) room.addStream(screenStream, null, { kind: 'screen' });
-      addOrUpdateTile('local:screen', screenStream, {
-        label: 'você · tela',
-        kind: 'screen',
-        isLocal: true,
-        autoFocus: true,
-      });
+      addScreenTile('local', screenStream);
       screenStream.getVideoTracks()[0].addEventListener('ended', stopScreen);
       $('btnScreen').classList.add('active');
     } catch (err) {
@@ -252,56 +246,65 @@ function stopScreen() {
   $('btnScreen').classList.remove('active');
 }
 
-// ---- Tiles: criação, foco, layout --------------------------------------
-function addOrUpdateTile(key, stream, { label, kind, isLocal, autoFocus }) {
-  let t = tiles[key];
-  if (!t) {
-    const el = document.createElement('div');
-    el.className = 'tile';
-    const video = document.createElement('video');
-    video.autoplay = true;
-    video.playsInline = true;
-    if (isLocal) video.muted = true; // não retornar o próprio áudio
-    if (isLocal && kind === 'camera') video.classList.add('mirror');
-    // Telas compartilhadas entram em PiP automaticamente quando o app perde foco
-    if (kind === 'screen') video.autoPictureInPicture = true;
-    const lab = document.createElement('span');
-    lab.className = 'label';
-    lab.textContent = label;
-    // Botão de PiP por tile
-    const pip = document.createElement('button');
-    pip.className = 'pipbtn';
-    pip.textContent = '⧉';
-    pip.title = 'Picture-in-Picture';
-    pip.onclick = (e) => {
-      e.stopPropagation(); // não mexe no foco
-      togglePip(video);
-    };
-    el.append(video, lab, pip);
-    el.onclick = () => setFocus(key);
-    t = tiles[key] = { el, video, kind, isLocal };
-  } else {
-    t.el.querySelector('.label').textContent = label;
+// ---- Detecção de voz (VAD) ---------------------------------------------
+let audioCtx = null;
+const vadCleanups = {}; // peerId -> cleanup
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+// autoplay: garante que o AudioContext rode após qualquer interação
+document.addEventListener('pointerdown', () => audioCtx && audioCtx.resume());
+
+function attachVAD(peerId, stream) {
+  if (!stream.getAudioTracks().length) return;
+  detachVAD(peerId);
+  const ctx = getAudioCtx();
+  const src = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.4;
+  src.connect(analyser);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let raf;
+  let lastSpoke = 0;
+  let running = true;
+  const tick = () => {
+    if (!running) return;
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i];
+    const avg = sum / data.length;
+    const now = performance.now();
+    if (avg > SPEAKING_THRESHOLD) lastSpoke = now;
+    setSpeaking(peerId, now - lastSpoke < SPEAKING_HANGOVER);
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+  vadCleanups[peerId] = () => {
+    running = false;
+    cancelAnimationFrame(raf);
+    try {
+      src.disconnect();
+    } catch (e) {}
+    setSpeaking(peerId, false);
+  };
+}
+
+function detachVAD(peerId) {
+  if (vadCleanups[peerId]) {
+    vadCleanups[peerId]();
+    delete vadCleanups[peerId];
   }
-  t.video.srcObject = stream;
-
-  if (autoFocus || !focusedKey) focusedKey = key;
-  layout();
 }
 
-function removeTile(key) {
-  const t = tiles[key];
-  if (!t) return;
-  const wasFocused = focusedKey === key;
-  t.el.remove();
-  delete tiles[key];
-  if (wasFocused) focusedKey = Object.keys(tiles)[0] || null;
-  layout();
-}
-
-function setFocus(key) {
-  focusedKey = key;
-  layout();
+function setSpeaking(peerId, on) {
+  const t = tiles[peerId];
+  if (t) t.el.classList.toggle('speaking', on);
+  // reflete no palco se este participante estiver em foco
+  if (focusedKey === peerId) stage.classList.toggle('speaking', on);
 }
 
 // ---- Picture-in-Picture -------------------------------------------------
@@ -318,35 +321,174 @@ async function togglePip(video) {
   }
 }
 
-// Botão global: prioriza uma tela compartilhada; senão, o tile em foco.
 $('btnPip').onclick = () => {
   const screenKey = Object.keys(tiles).find((k) => tiles[k].kind === 'screen');
-  const key = screenKey || focusedKey;
-  if (key && tiles[key]) togglePip(tiles[key].video);
+  if (screenKey) setFocus(screenKey);
+  togglePip(stageVideo);
 };
 
-function layout() {
+// ---- Tiles: participantes ----------------------------------------------
+function ensureParticipant(peerId) {
+  let t = tiles[peerId];
+  if (!t) {
+    const el = document.createElement('div');
+    el.className = 'tile participant';
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.style.display = 'none';
+    if (peerId === 'local') video.classList.add('mirror');
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    const lab = document.createElement('span');
+    lab.className = 'label';
+    const pip = document.createElement('button');
+    pip.className = 'pipbtn';
+    pip.textContent = '⧉';
+    pip.title = 'Picture-in-Picture';
+    pip.style.display = 'none';
+    pip.onclick = (e) => {
+      e.stopPropagation();
+      togglePip(video);
+    };
+    el.append(video, avatar, lab, pip);
+    el.onclick = () => setFocus(peerId);
+    t = tiles[peerId] = {
+      el,
+      video,
+      avatar,
+      lab,
+      pip,
+      kind: 'participant',
+      peerId,
+      stream: null,
+    };
+    filmstrip.appendChild(el);
+  }
+  refreshLabels(peerId);
+  return t;
+}
+
+function setParticipantCamera(peerId, stream) {
+  const t = ensureParticipant(peerId);
+  t.stream = stream || null;
+  if (stream) {
+    t.video.srcObject = stream;
+    t.video.style.display = 'block';
+    t.avatar.style.display = 'none';
+    t.pip.style.display = '';
+  } else {
+    t.video.srcObject = null;
+    t.video.style.display = 'none';
+    t.avatar.style.display = 'flex';
+    t.pip.style.display = 'none';
+  }
+  renderStage();
+}
+
+// ---- Tiles: tela --------------------------------------------------------
+function addScreenTile(peerId, stream) {
+  const key = peerId + ':screen';
+  let t = tiles[key];
+  if (!t) {
+    const el = document.createElement('div');
+    el.className = 'tile screen';
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.autoPictureInPicture = true; // auto-PiP ao perder foco da janela
+    const lab = document.createElement('span');
+    lab.className = 'label';
+    const pip = document.createElement('button');
+    pip.className = 'pipbtn';
+    pip.textContent = '⧉';
+    pip.title = 'Picture-in-Picture';
+    pip.onclick = (e) => {
+      e.stopPropagation();
+      togglePip(video);
+    };
+    el.append(video, lab, pip);
+    el.onclick = () => setFocus(key);
+    t = tiles[key] = { el, video, lab, pip, kind: 'screen', peerId, stream };
+    filmstrip.appendChild(el);
+  }
+  t.stream = stream;
+  t.video.srcObject = stream;
+  t.lab.textContent = `${nameOf(peerId)} · tela`;
+  setFocus(key); // telas ganham foco automático
+}
+
+// ---- Rótulos e avatares -------------------------------------------------
+function refreshLabels(peerId) {
+  const t = tiles[peerId];
+  if (t && t.kind === 'participant') {
+    const name = nameOf(peerId);
+    t.lab.textContent = peerId === 'local' ? `${name} (você)` : name;
+    t.avatar.textContent = initialOf(name);
+    t.avatar.style.background = `hsl(${hueOf(peerId)} 55% 45%)`;
+  }
+  const st = tiles[peerId + ':screen'];
+  if (st) st.lab.textContent = `${nameOf(peerId)} · tela`;
+}
+
+// ---- Foco / palco -------------------------------------------------------
+function setFocus(key) {
+  focusedKey = key;
+  renderStage();
+}
+
+function removeTile(key) {
+  const t = tiles[key];
+  if (!t) return;
+  t.el.remove();
+  delete tiles[key];
+  if (focusedKey === key) focusedKey = null;
+}
+
+function renderStage() {
   const keys = Object.keys(tiles);
-  if (!focusedKey || !tiles[focusedKey]) focusedKey = keys[0] || null;
+  if (!focusedKey || !tiles[focusedKey]) {
+    focusedKey =
+      keys.find((k) => tiles[k].kind === 'screen') ||
+      keys.find((k) => tiles[k].stream) ||
+      keys[0] ||
+      null;
+  }
+  keys.forEach((k) => tiles[k].el.classList.toggle('focused', k === focusedKey));
 
-  // esvazia containers (sem destruir os nós de vídeo)
-  while (stage.firstChild) stage.removeChild(stage.firstChild);
-  filmstrip.innerHTML = '';
-
-  if (!focusedKey) {
-    stage.appendChild(placeholder);
+  const t = focusedKey && tiles[focusedKey];
+  if (!t) {
+    stageVideo.style.display = 'none';
+    stageAvatar.style.display = 'none';
+    placeholder.style.display = '';
+    stage.classList.remove('speaking');
     return;
   }
+  placeholder.style.display = 'none';
+  // reflete estado de fala do foco
+  stage.classList.toggle('speaking', t.el.classList.contains('speaking'));
 
-  tiles[focusedKey].el.classList.add('focused');
-  stage.appendChild(tiles[focusedKey].el);
+  if (t.stream) {
+    stageVideo.srcObject = t.stream;
+    stageVideo.classList.toggle(
+      'mirror',
+      t.kind === 'participant' && t.peerId === 'local'
+    );
+    stageVideo.style.display = 'block';
+    stageAvatar.style.display = 'none';
+  } else {
+    stageAvatar.textContent = initialOf(nameOf(t.peerId));
+    stageAvatar.style.background = `hsl(${hueOf(t.peerId)} 55% 45%)`;
+    stageVideo.style.display = 'none';
+    stageAvatar.style.display = 'flex';
+  }
+}
 
-  keys
-    .filter((k) => k !== focusedKey)
-    .forEach((k) => {
-      tiles[k].el.classList.remove('focused');
-      filmstrip.appendChild(tiles[k].el);
-    });
+// ---- Utilitário: detectar fim de faixa de vídeo remota ------------------
+function onVideoEnded(stream, cb) {
+  stream.getVideoTracks().forEach((t) => t.addEventListener('ended', cb));
 }
 
 // ---- Chat UI ------------------------------------------------------------
@@ -386,9 +528,9 @@ $('sourceCancel').onclick = () => $('sourceModal').classList.add('hidden');
 
 // ---- Controles ----------------------------------------------------------
 function enableControls(on) {
-  ['btnMic', 'btnCam', 'btnScreen', 'btnPip', 'chatInput', 'chatSend'].forEach((id) => {
-    $(id).disabled = !on;
-  });
+  ['btnMic', 'btnCam', 'btnScreen', 'btnPip', 'chatInput', 'chatSend'].forEach(
+    (id) => ($(id).disabled = !on)
+  );
 }
 
 // ---- Auto-join na inicialização ----------------------------------------
@@ -397,5 +539,5 @@ $('room').value = params.get('room') || DEFAULT_ROOM;
 if (params.get('nick')) $('nick').value = params.get('nick');
 
 updateMicButton();
-join(); // entra automaticamente na sala padrão (daggerfall)
-startMic(); // conectado em voz por padrão
+join();
+startMic();

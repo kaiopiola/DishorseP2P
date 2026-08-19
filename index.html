@@ -23,7 +23,11 @@
     <main>
       <section class="videoarea">
         <div class="stage" id="stage">
-          <div class="placeholder" id="placeholder">nenhum vídeo — ative sua câmera ou tela, ou aguarde peers</div>
+          <video id="stageVideo" autoplay playsinline muted></video>
+          <div class="avatar big" id="stageAvatar"></div>
+          <div class="placeholder" id="placeholder">
+            ative sua câmera ou tela, ou aguarde peers
+          </div>
         </div>
         <div class="filmstrip" id="filmstrip"></div>
       </section>
