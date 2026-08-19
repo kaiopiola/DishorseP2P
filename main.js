@@ -60,17 +60,14 @@ function createWindow() {
 
   // Sala de teste opcional via env (só a sala; o apelido vem do gate/localStorage).
   // Útil para rodar 2 instâncias locais que se encontram sozinhas.
-  const testRoom = process.env.TEST_ROOM;
-  if (testRoom) {
-    const parts = [`room=${encodeURIComponent(testRoom)}`];
-    // Apelido de teste só é injetado se explicitamente definido (sem default).
-    if (process.env.TEST_NICK) {
-      parts.push(`nick=${encodeURIComponent(process.env.TEST_NICK)}`);
-    }
-    win.loadFile('index.html', { search: parts.join('&') });
-  } else {
-    win.loadFile('index.html');
-  }
+  // Parâmetros de teste opcionais (só quando definidos explicitamente):
+  //   TEST_NICK  -> apelido (pula o gate)
+  //   TEST_VOICE -> "spaceId:channelId" para entrar num canal de voz ao abrir
+  const parts = [];
+  if (process.env.TEST_NICK) parts.push(`nick=${encodeURIComponent(process.env.TEST_NICK)}`);
+  if (process.env.TEST_VOICE) parts.push(`joinVoice=${encodeURIComponent(process.env.TEST_VOICE)}`);
+  if (parts.length) win.loadFile('index.html', { search: parts.join('&') });
+  else win.loadFile('index.html');
 }
 
 app.whenReady().then(createWindow);

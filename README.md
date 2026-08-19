@@ -1,10 +1,25 @@
 # P2P Chat (Electron + Trystero)
 
-Chat de vídeo, câmera, texto e compartilhamento de tela/janela **totalmente P2P**,
-sem nenhum servidor próprio. O signaling (o "encontro" entre os peers) usa
-**trackers BitTorrent** públicos (via WSS) através de
-[Trystero](https://github.com/dmotz/trystero); a mídia vai direto de peer a peer
+Um **"Discord descentralizado"**: servidores → canais (texto e voz), com vídeo,
+câmera, tela e voz **totalmente P2P**, sem nenhum servidor próprio. O signaling
+(o "encontro" entre os peers) usa **trackers BitTorrent** públicos (via WSS) através
+de [Trystero](https://github.com/dmotz/trystero); a mídia vai direto de peer a peer
 via WebRTC.
+
+Veja o [TODO.md](TODO.md) para o roadmap (identidade por keypair, administração de
+servidores, persistência local-first/CRDT, presença e escala).
+
+## Estrutura da UI (três colunas)
+
+- **Servidores** (rail à esquerda): cada servidor é um manifesto local (nome, ícone,
+  canais). Crie com **+** ou entre por **🔗 convite** (código base64 do manifesto).
+- **Canais**: cada servidor tem canais de **texto** (`#`) e de **voz** (`🔊`).
+  Cada canal vira uma sala Trystero derivada (`spaceId:channelId`).
+- **Conteúdo**: canal de texto mostra o chat; canal de voz mostra o palco de vídeo.
+  A **voz persiste** enquanto você navega pelos canais de texto (barra "Voz conectada").
+
+> Estado atual: identidade = apelido (keypair vem no M2); servidores/canais e
+> preferências ficam em `localStorage`; sem histórico persistente ainda (M4).
 
 > Trocar a estratégia de signaling é uma linha em `renderer/index.js`
 > (`trystero/torrent`, `trystero/nostr`, `trystero/mqtt`). O default é `torrent`
@@ -27,10 +42,12 @@ npm run dev      # abre o Electron (sem rebuild)
 
 ## Testar
 
-1. Abra o app em **duas máquinas** (ou duas instâncias).
-2. Use o **mesmo nome de sala** nos dois e clique em **Entrar**.
-3. Ative câmera ou compartilhe tela — o outro peer recebe o stream.
-4. Troque mensagens de texto.
+1. Abra o app em **duas máquinas** (ou duas instâncias). Na 1ª vez, escolha um apelido.
+2. Os dois entram no mesmo servidor **Daggerfall** por padrão. Para um servidor
+   privado: um cria (**+**), copia o convite (menu **⌄** → Copiar convite) e o outro
+   entra pelo **🔗**.
+3. Cliquem no canal de voz **🔊 Sala de Voz** → **Entrar na voz**. Ativem câmera/tela.
+4. Troquem mensagens nos canais de texto (`#geral`, `#random`).
 
 ## Gerar executável Windows
 

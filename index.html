@@ -10,56 +10,155 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header>
-      <h1>P2P Chat <small>· sem servidor (Trystero)</small></h1>
-      <div class="room-bar">
-        <input id="room" placeholder="nome da sala" value="daggerfall" />
-        <input id="nick" placeholder="seu apelido" />
-        <button id="join">Entrar</button>
-        <span id="status" class="status">desconectado</span>
-        <button id="btnSettings" title="Configurações">⚙</button>
-      </div>
-    </header>
+    <div class="app">
+      <!-- Coluna 1: servidores -->
+      <nav class="rail" id="rail"></nav>
 
-    <main>
-      <section class="videoarea">
-        <div class="stage" id="stage">
-          <video id="stageVideo" autoplay playsinline muted></video>
-          <div class="avatar big" id="stageAvatar"></div>
-          <div class="placeholder" id="placeholder">
-            ative sua câmera ou tela, ou aguarde peers
+      <!-- Coluna 2: canais do servidor selecionado -->
+      <div class="sidebar">
+        <header class="space-header" id="spaceHeader">
+          <span id="spaceName">—</span>
+          <button id="btnSpaceMenu" title="Opções do servidor">⌄</button>
+        </header>
+        <div class="channel-list" id="channelList"></div>
+        <div class="voice-status hidden" id="voiceStatus">
+          <div class="vs-info">
+            <span class="vs-dot"></span>
+            <div>
+              <div class="vs-title">Voz conectada</div>
+              <div class="vs-sub" id="vsChannel">—</div>
+            </div>
           </div>
+          <button id="btnLeaveVoice" title="Desconectar da voz">⏻</button>
         </div>
-        <div class="filmstrip" id="filmstrip"></div>
-      </section>
+        <div class="me-bar" id="meBar">
+          <div class="me-info">
+            <div class="avatar sm" id="meAvatar">?</div>
+            <span id="meNick">—</span>
+          </div>
+          <button id="btnSettings" title="Configurações">⚙</button>
+        </div>
+      </div>
 
-      <aside class="sidebar">
-        <div class="controls">
-          <button id="btnMic" disabled>🎤 Microfone</button>
-          <button id="btnCam" disabled>📷 Câmera</button>
-          <button id="btnScreen" disabled>🖥️ Tela</button>
-          <button id="btnPip" disabled title="Picture-in-Picture (prioriza tela compartilhada)">⧉ PiP</button>
-        </div>
-        <div class="chat">
+      <!-- Coluna 3: conteúdo (texto OU voz) -->
+      <main class="content">
+        <!-- Vista de canal de texto -->
+        <section class="text-view hidden" id="textView">
+          <header class="topbar"><span class="ch-hash">#</span> <span id="textTitle">—</span></header>
           <ul id="messages"></ul>
           <form id="chatForm">
-            <input id="chatInput" placeholder="mensagem..." autocomplete="off" disabled />
-            <button id="chatSend" disabled>Enviar</button>
+            <input id="chatInput" placeholder="Mensagem..." autocomplete="off" />
+            <button id="chatSend">Enviar</button>
           </form>
-        </div>
-      </aside>
-    </main>
+        </section>
 
-    <!-- áudio remoto (mic dos peers) fica aqui, sem UI -->
+        <!-- Vista de canal de voz -->
+        <section class="voice-view hidden" id="voiceView">
+          <header class="topbar"><span class="ch-vol">🔊</span> <span id="voiceTitle">—</span></header>
+          <div class="stage" id="stage">
+            <video id="stageVideo" autoplay playsinline muted></video>
+            <div class="avatar big" id="stageAvatar"></div>
+            <div class="placeholder" id="placeholder">Entre na voz para conversar</div>
+          </div>
+          <div class="filmstrip" id="filmstrip"></div>
+          <div class="voice-controls" id="voiceControls">
+            <button id="btnJoinVoice" class="join-voice">Entrar na voz</button>
+            <div class="vc-buttons hidden" id="vcButtons">
+              <button id="btnMic">🎤 Microfone</button>
+              <button id="btnCam">📷 Câmera</button>
+              <button id="btnScreen">🖥️ Tela</button>
+              <button id="btnPip" title="Picture-in-Picture (prioriza tela)">⧉ PiP</button>
+              <button id="btnDisconnect" class="danger">⏻ Sair</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Vista vazia -->
+        <section class="empty-view" id="emptyView">
+          <div class="placeholder">Selecione um canal</div>
+        </section>
+      </main>
+    </div>
+
     <div id="audioSinks" style="display: none"></div>
 
     <!-- gate de apelido (primeira vez) -->
     <div id="nickModal" class="modal hidden">
       <div class="modal-content nick-gate">
         <h2>Bem-vindo 👋</h2>
-        <p>Escolha um apelido para entrar na sala.</p>
+        <p>Escolha um apelido para começar.</p>
         <input id="nickInput" placeholder="seu apelido" maxlength="24" autocomplete="off" />
-        <button id="nickConfirm">Entrar</button>
+        <button id="nickConfirm">Continuar</button>
+      </div>
+    </div>
+
+    <!-- criar servidor -->
+    <div id="spaceModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Novo servidor</h2>
+        <div class="setting">
+          <label for="spaceNameInput">Nome</label>
+          <input id="spaceNameInput" placeholder="Meu servidor" maxlength="30" autocomplete="off" />
+        </div>
+        <div class="setting">
+          <label for="spaceIconInput">Ícone (emoji ou letra)</label>
+          <input id="spaceIconInput" placeholder="🎮" maxlength="2" autocomplete="off" />
+        </div>
+        <div class="settings-actions">
+          <button id="spaceCreate">Criar</button>
+          <button id="spaceCancel">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- entrar por convite -->
+    <div id="inviteModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Entrar em um servidor</h2>
+        <p class="hint">Cole o código de convite que alguém compartilhou.</p>
+        <div class="setting">
+          <input id="inviteInput" placeholder="código de convite" autocomplete="off" />
+        </div>
+        <div class="settings-actions">
+          <button id="inviteJoin">Entrar</button>
+          <button id="inviteCancel">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- criar canal -->
+    <div id="channelModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Novo canal</h2>
+        <div class="setting">
+          <label for="channelNameInput">Nome</label>
+          <input id="channelNameInput" placeholder="novo-canal" maxlength="30" autocomplete="off" />
+        </div>
+        <div class="setting">
+          <label>Tipo</label>
+          <div class="radio-row">
+            <label><input type="radio" name="chType" value="text" checked /> # Texto</label>
+            <label><input type="radio" name="chType" value="voice" /> 🔊 Voz</label>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button id="channelCreate">Criar</button>
+          <button id="channelCancel">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- opções do servidor -->
+    <div id="spaceMenuModal" class="modal hidden">
+      <div class="modal-content">
+        <h2 id="spaceMenuTitle">Servidor</h2>
+        <div class="settings-actions col">
+          <button id="menuAddChannel">➕ Criar canal</button>
+          <button id="menuCopyInvite">🔗 Copiar convite</button>
+          <button id="menuLeaveSpace" class="danger">🚪 Sair do servidor</button>
+          <button id="spaceMenuClose">Fechar</button>
+        </div>
+        <p class="hint" id="inviteCopied" style="display: none">Convite copiado! ✔</p>
       </div>
     </div>
 
@@ -94,13 +193,12 @@
           <hr class="sep" />
           <div class="setting">
             <label>Servidor TURN <span class="hint">(opcional — para NAT simétrico/CGNAT)</span></label>
-            <input id="inpTurnUrl" placeholder="turn:host:3478  (separe vários por vírgula)" autocomplete="off" />
+            <input id="inpTurnUrl" placeholder="turn:host:3478" autocomplete="off" />
           </div>
           <div class="setting two-col">
             <input id="inpTurnUser" placeholder="usuário TURN" autocomplete="off" />
             <input id="inpTurnPass" type="password" placeholder="senha TURN" autocomplete="off" />
           </div>
-          <p class="hint">Alterou STUN/TURN? Clique em reconectar para aplicar.</p>
           <button id="btnReconnect">Reconectar</button>
         </div>
 
