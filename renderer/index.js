@@ -21,6 +21,12 @@ let sendChat = null;
 let textAnnounceMan = null; // broadcast do manifesto na sala de texto ativa
 const messagesByChannel = {}; // key -> [{from,text,sys,verified}]
 
+// chat lateral do canal de voz (sala própria por canal de voz)
+let voiceChatRoom = null;
+let voiceChatSend = null;
+const voiceChatIdents = {};
+const voiceChatMsgs = [];
+
 // voz (persiste enquanto navego em canais de texto)
 let voice = null; // { key, spaceId, channelId, name, room }
 let voiceParticipants = {}; // peerId -> { pub, nick, verified }
@@ -419,6 +425,7 @@ async function joinVoice(spaceId, ch) {
   setupVoiceRoom(voice.room, spaceId);
   ensureParticipant('local');
   focusedKey = 'local';
+  joinVoiceChat(k); // chat lateral da sala
   await applyMic(); // voz por padrão ao entrar
   updateVoiceStatus();
   showVoiceView(spaceId, ch);
@@ -429,6 +436,7 @@ function leaveVoice() {
   if (!voice) return;
   stopPipLoop();
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+  leaveVoiceChat();
   stopCam();
   stopScreen();
   stopMicHard();
@@ -554,6 +562,93 @@ function updateVoiceStatus() {
     vs.classList.add('hidden');
   }
 }
+
+// ---- Chat lateral do canal de voz ---------------------------------------
+// handshake de identidade reutilizável (responde ao receber + registra)
+function attachHandshake(room, identsMap) {
+  const [sendIdent, getIdent] = room.makeAction('ident');
+  const announced = new Set();
+  const announce = async (target) => {
+    if (target) announced.add(target);
+    const sig = await identity.sign(identity.pub());
+    sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
+  };
+  getIdent(async (msg, pid) => {
+    const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
+    identsMap[pid] = { pub: msg.pub, nick: msg.nick, verified };
+    if (!announced.has(pid)) announce(pid);
+  });
+  return announce;
+}
+
+function joinVoiceChat(k) {
+  leaveVoiceChat();
+  voiceChatRoom = joinRoom(
+    { appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } },
+    'vchat:' + k
+  );
+  const announce = attachHandshake(voiceChatRoom, voiceChatIdents);
+  const [send, get] = voiceChatRoom.makeAction('chat');
+  voiceChatSend = async (text) => {
+    const sig = await identity.sign(text);
+    send({ text, sig });
+  };
+  get(async (payload, pid) => {
+    const id = voiceChatIdents[pid];
+    const nick = id?.nick || pid.slice(0, 6);
+    const verified = id ? await identity.verify(id.pub, payload.sig, payload.text) : false;
+    voiceChatMsgs.push({ from: nick, text: payload.text, verified });
+    renderVoiceChat();
+  });
+  voiceChatRoom.onPeerJoin((pid) => {
+    announce(pid);
+    setTimeout(() => {
+      if (!voiceChatIdents[pid]) announce(pid);
+    }, 2500);
+  });
+  renderVoiceChat();
+}
+
+function leaveVoiceChat() {
+  if (voiceChatRoom) {
+    try {
+      voiceChatRoom.leave();
+    } catch (e) {}
+    voiceChatRoom = null;
+  }
+  voiceChatSend = null;
+  voiceChatMsgs.length = 0;
+  for (const p in voiceChatIdents) delete voiceChatIdents[p];
+  renderVoiceChat();
+}
+
+function renderVoiceChat() {
+  const box = $('voiceChatMessages');
+  if (!box) return;
+  box.innerHTML = '';
+  voiceChatMsgs.forEach((m) => {
+    const li = document.createElement('div');
+    li.className = 'vc-msg';
+    const badge = m.verified
+      ? '<span class="verified">✓</span> '
+      : '<span class="unverified">⚠</span> ';
+    li.innerHTML = `${badge}<b>${escapeHtml(m.from)}:</b> ${escapeHtml(m.text)}`;
+    box.append(li);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+$('voiceChatForm').onsubmit = (e) => {
+  e.preventDefault();
+  const input = $('voiceChatInput');
+  const text = input.value.trim();
+  if (!text || !voiceChatSend) return;
+  voiceChatSend(text);
+  voiceChatMsgs.push({ from: `${myNick()} (você)`, text, verified: true });
+  renderVoiceChat();
+  input.value = '';
+};
+$('voiceChatToggle').onclick = () => $('voiceChat').classList.toggle('collapsed');
 
 // ---- estado de mídia (para ícones e broadcast) --------------------------
 function localState() {

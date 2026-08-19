@@ -85,8 +85,8 @@ Decisões tomadas:
       antes de entrar na call; salvos em localStorage (micMuted/deafened)
 - [x] **Lista de quem está assistindo minha tela** — receptor sinaliza (action
       'watch') ao focar/desfocar; emissor mostra "👁 N" + nomes no tile da tela
-- [ ] **Chat de texto lateral (colapsável) dentro do canal de voz**, à direita
-      do palco — conversar por texto sem sair da call
+- [x] **Chat de texto lateral (colapsável) no canal de voz** — botão 💬 na topbar;
+      cada canal de voz tem sua sala de chat própria ('vchat:'), assinada/verificada
 
 ## 🖥️ Desktop / janela
 - [x] Desativar o menu superior padrão do Electron

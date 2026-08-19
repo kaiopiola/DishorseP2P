@@ -58,22 +58,37 @@
 
         <!-- Vista de canal de voz -->
         <section class="voice-view hidden" id="voiceView">
-          <header class="topbar"><span class="ch-vol">🔊</span> <span id="voiceTitle">—</span></header>
-          <div class="stage" id="stage">
-            <video id="stageVideo" autoplay playsinline muted></video>
-            <div class="avatar big" id="stageAvatar"></div>
-            <div class="placeholder" id="placeholder">Entre na voz para conversar</div>
-            <button id="stagePip" class="stage-pip" title="Picture-in-Picture" style="display: none">⧉</button>
-          </div>
-          <div class="filmstrip" id="filmstrip"></div>
-          <div class="voice-controls" id="voiceControls">
-            <button id="btnJoinVoice" class="join-voice">Entrar na voz</button>
-            <div class="vc-buttons hidden" id="vcButtons">
-              <button id="btnMic">🎤 Microfone</button>
-              <button id="btnCam">📷 Câmera</button>
-              <button id="btnScreen">🖥️ Tela</button>
-              <button id="btnDisconnect" class="danger">⏻ Sair</button>
+          <header class="topbar">
+            <span class="ch-vol">🔊</span> <span id="voiceTitle">—</span>
+            <button id="voiceChatToggle" title="Chat da sala" style="margin-left: auto">💬</button>
+          </header>
+          <div class="voice-body">
+            <div class="voice-main">
+              <div class="stage" id="stage">
+                <video id="stageVideo" autoplay playsinline muted></video>
+                <div class="avatar big" id="stageAvatar"></div>
+                <div class="placeholder" id="placeholder">Entre na voz para conversar</div>
+                <button id="stagePip" class="stage-pip" title="Picture-in-Picture" style="display: none">⧉</button>
+              </div>
+              <div class="filmstrip" id="filmstrip"></div>
+              <div class="voice-controls" id="voiceControls">
+                <button id="btnJoinVoice" class="join-voice">Entrar na voz</button>
+                <div class="vc-buttons hidden" id="vcButtons">
+                  <button id="btnMic">🎤 Microfone</button>
+                  <button id="btnCam">📷 Câmera</button>
+                  <button id="btnScreen">🖥️ Tela</button>
+                  <button id="btnDisconnect" class="danger">⏻ Sair</button>
+                </div>
+              </div>
             </div>
+            <aside class="voice-chat collapsed" id="voiceChat">
+              <div class="vc-chat-header">Chat da sala</div>
+              <div class="vc-messages" id="voiceChatMessages"></div>
+              <form id="voiceChatForm">
+                <input id="voiceChatInput" placeholder="Mensagem..." autocomplete="off" />
+                <button>Enviar</button>
+              </form>
+            </aside>
           </div>
         </section>
 
