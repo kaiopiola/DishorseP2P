@@ -88,7 +88,22 @@
           <label><input type="checkbox" id="chkEcho" /> Cancelamento de eco</label>
           <label><input type="checkbox" id="chkAgc" /> Ganho automático</label>
         </div>
-        <button id="settingsClose">Fechar</button>
+
+        <hr class="sep" />
+        <div class="setting">
+          <label>Servidor TURN <span class="hint">(opcional — para NAT simétrico/CGNAT)</span></label>
+          <input id="inpTurnUrl" placeholder="turn:host:3478  (separe vários por vírgula)" autocomplete="off" />
+        </div>
+        <div class="setting two-col">
+          <input id="inpTurnUser" placeholder="usuário TURN" autocomplete="off" />
+          <input id="inpTurnPass" type="password" placeholder="senha TURN" autocomplete="off" />
+        </div>
+        <p class="hint">Alterou STUN/TURN? Clique em reconectar para aplicar.</p>
+
+        <div class="settings-actions">
+          <button id="btnReconnect">Reconectar</button>
+          <button id="settingsClose">Fechar</button>
+        </div>
       </div>
     </div>
 

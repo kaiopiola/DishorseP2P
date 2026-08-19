@@ -65,18 +65,7 @@ function join() {
   console.log('[p2p] selfId=', selfId, 'entrando na sala:', roomName);
   try {
     room = joinRoom(
-      {
-        appId: APP_ID,
-        // STUN públicos p/ atravessar NAT entre redes diferentes (serverless).
-        // Para NAT simétrico/CGNAT ainda pode ser necessário um TURN próprio.
-        rtcConfig: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-          ],
-        },
-      },
+      { appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } },
       roomName
     );
   } catch (err) {
@@ -567,11 +556,42 @@ function enableControls(on) {
 
 // ---- Configurações / dispositivos --------------------------------------
 const settings = Object.assign(
-  { micId: '', outputId: '', volume: 1, noise: true, echo: true, agc: true },
+  {
+    micId: '',
+    outputId: '',
+    volume: 1,
+    noise: true,
+    echo: true,
+    agc: true,
+    turnUrl: '',
+    turnUser: '',
+    turnPass: '',
+  },
   JSON.parse(localStorage.getItem('p2pSettings') || '{}')
 );
 function saveSettings() {
   localStorage.setItem('p2pSettings', JSON.stringify(settings));
+}
+
+// Monta a lista de ICE servers: STUN públicos + TURN opcional das configs.
+// STUN resolve a maioria dos NATs; TURN cobre NAT simétrico/CGNAT (retransmite).
+function buildIceServers() {
+  const list = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
+  ];
+  if (settings.turnUrl.trim()) {
+    const urls = settings.turnUrl
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const entry = { urls };
+    if (settings.turnUser) entry.username = settings.turnUser;
+    if (settings.turnPass) entry.credential = settings.turnPass;
+    list.push(entry);
+  }
+  return list;
 }
 
 // Constraints do microfone conforme dispositivo e filtros escolhidos.
@@ -626,6 +646,9 @@ function syncSettingsUI() {
   $('chkNoise').checked = settings.noise;
   $('chkEcho').checked = settings.echo;
   $('chkAgc').checked = settings.agc;
+  $('inpTurnUrl').value = settings.turnUrl;
+  $('inpTurnUser').value = settings.turnUser;
+  $('inpTurnPass').value = settings.turnPass;
 }
 
 let meterRaf = null;
@@ -677,6 +700,23 @@ $('chkAgc').onchange = (e) => {
   settings.agc = e.target.checked;
   saveSettings();
   applyMic();
+};
+$('inpTurnUrl').oninput = (e) => {
+  settings.turnUrl = e.target.value;
+  saveSettings();
+};
+$('inpTurnUser').oninput = (e) => {
+  settings.turnUser = e.target.value;
+  saveSettings();
+};
+$('inpTurnPass').oninput = (e) => {
+  settings.turnPass = e.target.value;
+  saveSettings();
+};
+// TURN/STUN só entram em vigor em nova conexão -> reconecta na mesma sala.
+$('btnReconnect').onclick = () => {
+  join();
+  addMessage('sistema', 'reconectando com os servidores ICE atuais...');
 };
 if (navigator.mediaDevices) {
   navigator.mediaDevices.addEventListener('devicechange', populateDevices);

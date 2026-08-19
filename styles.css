@@ -152,5 +152,13 @@ main { flex: 1; display: flex; min-height: 0; }
 .setting.checks input { width: auto; }
 .meter { height: 12px; background: #0d0f13; border: 1px solid #333; border-radius: 6px; overflow: hidden; }
 #meterFill { height: 100%; width: 0%; background: linear-gradient(90deg, #22c55e, #eab308, #ef4444); transition: width 0.05s linear; }
-#settingsClose { margin-top: 8px; }
 #btnSettings { padding: 8px 10px; }
+.setting .hint { color: #7a8496; font-size: 12px; font-weight: normal; }
+.setting.two-col { display: flex; gap: 8px; }
+.setting.two-col input { flex: 1; }
+.sep { border: none; border-top: 1px solid #2a2f3a; margin: 18px 0; }
+p.hint { color: #7a8496; font-size: 12px; margin: 4px 0 14px; }
+.settings-actions { display: flex; gap: 8px; }
+.settings-actions button { flex: 1; padding: 10px; }
+#btnReconnect { background: #14532d; border-color: #22c55e; }
+#btnReconnect:hover { background: #166534; }

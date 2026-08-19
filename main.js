@@ -62,9 +62,12 @@ function createWindow() {
   // Útil para rodar 2 instâncias locais que se encontram sozinhas.
   const testRoom = process.env.TEST_ROOM;
   if (testRoom) {
-    win.loadFile('index.html', {
-      search: `room=${encodeURIComponent(testRoom)}`,
-    });
+    const parts = [`room=${encodeURIComponent(testRoom)}`];
+    // Apelido de teste só é injetado se explicitamente definido (sem default).
+    if (process.env.TEST_NICK) {
+      parts.push(`nick=${encodeURIComponent(process.env.TEST_NICK)}`);
+    }
+    win.loadFile('index.html', { search: parts.join('&') });
   } else {
     win.loadFile('index.html');
   }

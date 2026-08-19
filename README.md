@@ -53,9 +53,23 @@ O signaling (torrent) funciona pela internet sem configuração. Para a **mídia
 o WebRTC tenta conexão direta usando os servidores **STUN** públicos já
 configurados no `rtcConfig` (`renderer/index.js`). Isso cobre a maioria das redes
 domésticas. Se um dos lados estiver atrás de **NAT simétrico** ou **CGNAT** (comum
-em 4G/5G e alguns provedores), a conexão direta falha e seria necessário um
-servidor **TURN** (ex.: coturn) — o único ponto que não dá para eliminar 100% sem
-infra. Basta adicionar a entrada TURN ao `iceServers`.
+em 4G/5G e alguns provedores), a conexão direta falha e é necessário um servidor
+**TURN** (retransmite a mídia) — o único ponto que não dá para eliminar 100% sem
+infra.
+
+### Configurar TURN
+
+Abra **⚙ Configurações** e preencha o servidor TURN, usuário e senha; clique em
+**Reconectar** para aplicar. Aceita múltiplas URLs separadas por vírgula, ex.:
+
+```
+turn:seu-host:3478,turns:seu-host:5349
+```
+
+Opções de TURN: subir um **coturn** próprio, ou usar um serviço (o
+[Metered OpenRelay](https://www.metered.ca/tools/openrelay/) oferece TURN gratuito
+para testes). Os dados ficam salvos em `localStorage`; a lista final de
+`iceServers` (STUN fixos + seu TURN) é montada em `buildIceServers()`.
 
 ## Como funciona
 
