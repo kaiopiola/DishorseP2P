@@ -1368,9 +1368,16 @@ function syncSettingsUI() {
   $('inpTurnPass').value = settings.turnPass;
 }
 let meterRaf = null;
+$('chkBackground').onchange = (e) => window.appPrefs?.setBackground(e.target.checked);
+$('chkAutostart').onchange = (e) => window.appPrefs?.setAutostart(e.target.checked);
 $('btnSettings').onclick = () => {
   syncSettingsUI();
   populateDevices();
+  if (window.appPrefs)
+    window.appPrefs.get().then((p) => {
+      $('chkBackground').checked = p.background;
+      $('chkAutostart').checked = p.autostart;
+    });
   openModal('settingsModal');
   const fill = $('meterFill');
   const loop = () => {

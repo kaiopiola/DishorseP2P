@@ -138,13 +138,14 @@ Decisões tomadas:
 - [ ] SFU seletivo / camada de retransmissão (reintroduz nó de mídia?)
 - [ ] TURN próprio para NAT simétrico/CGNAT (UI já existe, oculta)
 
-## 🪟 Segundo plano & inicialização (novo)
-- [ ] **Rodar em segundo plano por padrão** — fechar a janela minimiza para a
-      bandeja (Tray) em vez de sair; ícone na bandeja com menu (abrir/sair)
-- [ ] **Iniciar com o Windows em segundo plano** — auto-launch
-      (app.setLoginItemSettings / openAtLogin) já minimizado na bandeja
-      > Objetivo: facilitar o compartilhamento de conteúdo (app já pronto/ativo).
-      > Adicionar opção nas configurações para ligar/desligar cada um.
+## 🪟 Segundo plano & inicialização
+- [x] **Rodar em segundo plano** — fechar minimiza para a bandeja (Tray) com menu
+      Abrir/Sair; padrão ligado; toggle nas configurações
+- [x] **Iniciar com o Windows** (na bandeja) — app.setLoginItemSettings com
+      --hidden; janela começa oculta quando iniciada assim; toggle nas configs
+- [x] Instância única (requestSingleInstanceLock) reabre a janela existente
+- [x] Ícone gerado programaticamente (scripts/make-icon.js → assets/icon.png)
+- [ ] (futuro) ícone .ico para o exe no empacotamento Windows
 
 ## 🐞 Estabilidade / conexão
 - [~] **Dessincronização ao entrar** (ID no lugar do nome; mensagens não aparecem
