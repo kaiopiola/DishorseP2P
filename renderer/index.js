@@ -280,18 +280,24 @@ function joinText(k) {
 
   // handshake de identidade
   const [sendIdent, getIdent] = textRoom.makeAction('ident');
+  const announced = new Set();
   const announce = async (target) => {
+    if (target) announced.add(target);
     const sig = await identity.sign(identity.pub());
     sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
   };
   getIdent(async (msg, pid) => {
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
     textIdents[pid] = { pub: msg.pub, nick: msg.nick, verified };
+    if (!announced.has(pid)) announce(pid); // responde se meu anúncio se perdeu
   });
   textAnnounceMan = manifestSync(textRoom, parseKey(k).spaceId);
   textRoom.onPeerJoin((pid) => {
     announce(pid);
     textAnnounceMan(pid);
+    setTimeout(() => {
+      if (!textIdents[pid]) announce(pid); // retry defensivo
+    }, 2500);
   });
 
   // chat assinado
@@ -356,6 +362,7 @@ function showVoiceView(spaceId, ch) {
   const here = voice && voice.key === k;
   $('btnJoinVoice').classList.toggle('hidden', here);
   $('vcButtons').classList.toggle('hidden', !here);
+  $('stagePip').style.display = here ? '' : 'none';
   if (here) {
     renderStage();
   } else {
@@ -395,6 +402,8 @@ async function joinVoice(spaceId, ch) {
 
 function leaveVoice() {
   if (!voice) return;
+  stopPipLoop();
+  if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   stopCam();
   stopScreen();
   stopMicHard();
@@ -418,7 +427,9 @@ function leaveVoice() {
 
 function setupVoiceRoom(room, spaceId) {
   const [sendIdent, getIdent] = room.makeAction('ident');
+  const announced = new Set(); // peers a quem já anunciei minha identidade
   const announce = async (target) => {
+    if (target) announced.add(target);
     const sig = await identity.sign(identity.pub());
     sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
   };
@@ -427,6 +438,7 @@ function setupVoiceRoom(room, spaceId) {
     const prev = voiceParticipants[pid] || {};
     voiceParticipants[pid] = { pub: msg.pub, nick: msg.nick, verified, state: prev.state };
     if (isBannedPub(msg.pub)) return removeParticipant(pid); // cooperativo
+    if (!announced.has(pid)) announce(pid); // meu anúncio pode ter se perdido: respondo
     refreshTileLabels(pid);
     renderChannels();
   });
@@ -453,6 +465,10 @@ function setupVoiceRoom(room, spaceId) {
     if (camStream) room.addStream(camStream, pid, { kind: 'camera' });
     if (screenStream) room.addStream(screenStream, pid, { kind: 'screen' });
     if (camStream || screenStream) setTimeout(applyEncodingParams, 800);
+    // retry defensivo: se em 2.5s ainda não recebi a identidade dele, reanuncio
+    setTimeout(() => {
+      if (voiceParticipants[pid] && !voiceParticipants[pid].pub) announce(pid);
+    }, 2500);
     renderChannels();
   });
 
@@ -681,17 +697,9 @@ function ensureParticipant(pid) {
     avatar.className = 'avatar';
     const lab = document.createElement('span');
     lab.className = 'label';
-    const pip = document.createElement('button');
-    pip.className = 'pipbtn';
-    pip.textContent = '⧉';
-    pip.style.display = 'none';
-    pip.onclick = (e) => {
-      e.stopPropagation();
-      togglePip(video);
-    };
-    el.append(video, avatar, lab, pip);
+    el.append(video, avatar, lab);
     el.onclick = () => setFocus(pid);
-    t = tiles[pid] = { el, video, avatar, lab, pip, kind: 'participant', peerId: pid, stream: null };
+    t = tiles[pid] = { el, video, avatar, lab, kind: 'participant', peerId: pid, stream: null };
     filmstrip.appendChild(el);
   }
   refreshTileLabels(pid);
@@ -705,12 +713,10 @@ function setParticipantCamera(pid, stream) {
     t.video.srcObject = stream;
     t.video.style.display = 'block';
     t.avatar.style.display = 'none';
-    t.pip.style.display = '';
   } else {
     t.video.srcObject = null;
     t.video.style.display = 'none';
     t.avatar.style.display = 'flex';
-    t.pip.style.display = 'none';
   }
   renderStage();
 }
@@ -809,7 +815,6 @@ function renderStage() {
   stage.classList.toggle('speaking', t.el.classList.contains('speaking'));
   if (t.stream) {
     stageVideo.srcObject = t.stream;
-    stageVideo.autoPictureInPicture = t.kind === 'screen'; // auto-PiP na tela assistida
     stageVideo.classList.toggle('mirror', t.kind === 'participant' && t.peerId === 'local');
     stageVideo.style.display = 'block';
     stageAvatar.style.display = 'none';
@@ -882,27 +887,125 @@ function setSpeaking(pid, on) {
   const m = $('vm-' + pid);
   if (m) m.classList.toggle('speaking', on);
   if (focusedKey === pid) stage.classList.toggle('speaking', on);
+  if (on) activeSpeaker = pid; // acompanha quem fala (para o PiP de avatar)
 }
 
 // ========================================================================
 //  PICTURE-IN-PICTURE
 // ========================================================================
-async function togglePip(video) {
-  try {
-    if (document.pictureInPictureElement === video) await document.exitPictureInPicture();
-    else {
-      if (!video.srcObject || video.readyState === 0) return;
-      await video.requestPictureInPicture();
+// PiP global do palco: um canvas espelha o que está em foco — a transmissão
+// aberta (tela/câmera) ou, quando não há vídeo, o card com a inicial do falante
+// atual (estilo Discord). Assim o PiP acompanha foco e quem está falando.
+let pipCanvas = null;
+let pipCtx = null;
+let pipVideo = null;
+let pipRaf = null;
+let activeSpeaker = 'local';
+
+function ensurePipEls() {
+  if (pipCanvas) return;
+  pipCanvas = document.createElement('canvas');
+  pipCanvas.width = 640;
+  pipCanvas.height = 360;
+  pipCtx = pipCanvas.getContext('2d');
+  pipVideo = document.createElement('video');
+  pipVideo.muted = true;
+  pipVideo.autoplay = true;
+  pipVideo.playsInline = true;
+  pipVideo.style.display = 'none';
+  document.body.appendChild(pipVideo);
+  pipVideo.addEventListener('leavepictureinpicture', stopPipLoop);
+}
+
+function stopPipLoop() {
+  if (pipRaf) cancelAnimationFrame(pipRaf);
+  pipRaf = null;
+}
+
+function isSpeaking(pid) {
+  return (
+    tiles[pid]?.el.classList.contains('speaking') ||
+    $('vm-' + pid)?.classList.contains('speaking') ||
+    false
+  );
+}
+
+function drawPipAvatar(pid) {
+  const w = pipCanvas.width;
+  const h = pipCanvas.height;
+  pipCtx.fillStyle = '#14171d';
+  pipCtx.fillRect(0, 0, w, h);
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = Math.min(w, h) * 0.28;
+  if (isSpeaking(pid)) {
+    pipCtx.beginPath();
+    pipCtx.arc(cx, cy, r + 9, 0, Math.PI * 2);
+    pipCtx.strokeStyle = '#22c55e';
+    pipCtx.lineWidth = 7;
+    pipCtx.stroke();
+  }
+  pipCtx.beginPath();
+  pipCtx.arc(cx, cy, r, 0, Math.PI * 2);
+  pipCtx.fillStyle = `hsl(${hueOf(colorKey(pid))} 55% 45%)`;
+  pipCtx.fill();
+  pipCtx.fillStyle = '#fff';
+  pipCtx.font = `bold ${Math.round(r)}px system-ui, sans-serif`;
+  pipCtx.textAlign = 'center';
+  pipCtx.textBaseline = 'middle';
+  pipCtx.fillText(initialOf(nickOf(pid)), cx, cy + 3);
+}
+
+function drawPipFrame() {
+  const w = pipCanvas.width;
+  const h = pipCanvas.height;
+  const t = focusedKey && tiles[focusedKey];
+  if (t && t.stream && stageVideo.videoWidth) {
+    // desenha o vídeo em foco mantendo o aspecto (contain)
+    pipCtx.fillStyle = '#000';
+    pipCtx.fillRect(0, 0, w, h);
+    const vw = stageVideo.videoWidth;
+    const vh = stageVideo.videoHeight;
+    const scale = Math.min(w / vw, h / vh);
+    const dw = vw * scale;
+    const dh = vh * scale;
+    const dx = (w - dw) / 2;
+    const dy = (h - dh) / 2;
+    const mirror = t.kind === 'participant' && t.peerId === 'local';
+    if (mirror) {
+      pipCtx.save();
+      pipCtx.translate(w, 0);
+      pipCtx.scale(-1, 1);
+      pipCtx.drawImage(stageVideo, w - dx - dw, dy, dw, dh);
+      pipCtx.restore();
+    } else {
+      pipCtx.drawImage(stageVideo, dx, dy, dw, dh);
     }
+  } else {
+    // sem vídeo: card do falante atual (ou do foco)
+    const pid = voiceParticipants[activeSpeaker] || activeSpeaker === 'local' ? activeSpeaker : t?.peerId || 'local';
+    drawPipAvatar(pid);
+  }
+  pipRaf = requestAnimationFrame(drawPipFrame);
+}
+
+async function toggleStagePip() {
+  ensurePipEls();
+  try {
+    if (document.pictureInPictureElement === pipVideo) {
+      await document.exitPictureInPicture();
+      return;
+    }
+    if (!pipRaf) drawPipFrame();
+    if (!pipVideo.srcObject) pipVideo.srcObject = pipCanvas.captureStream(15);
+    await pipVideo.play();
+    await pipVideo.requestPictureInPicture();
   } catch (err) {
+    stopPipLoop();
     pushSys('PiP: ' + err.message);
   }
 }
-$('btnPip').onclick = () => {
-  const screenKey = Object.keys(tiles).find((k) => tiles[k].kind === 'screen');
-  if (screenKey) setFocus(screenKey);
-  togglePip(stageVideo);
-};
+$('stagePip').onclick = toggleStagePip;
 
 // ========================================================================
 //  CONFIGURAÇÕES / DISPOSITIVOS

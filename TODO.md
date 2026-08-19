@@ -123,6 +123,21 @@ Decisões tomadas:
 - [ ] SFU seletivo / camada de retransmissão (reintroduz nó de mídia?)
 - [ ] TURN próprio para NAT simétrico/CGNAT (UI já existe, oculta)
 
+## 🪟 Segundo plano & inicialização (novo)
+- [ ] **Rodar em segundo plano por padrão** — fechar a janela minimiza para a
+      bandeja (Tray) em vez de sair; ícone na bandeja com menu (abrir/sair)
+- [ ] **Iniciar com o Windows em segundo plano** — auto-launch
+      (app.setLoginItemSettings / openAtLogin) já minimizado na bandeja
+      > Objetivo: facilitar o compartilhamento de conteúdo (app já pronto/ativo).
+      > Adicionar opção nas configurações para ligar/desligar cada um.
+
+## 🐞 Estabilidade / conexão
+- [~] **Dessincronização ao entrar** (ID no lugar do nome; mensagens não aparecem
+      para alguns) — MITIGADO: handshake de identidade agora responde ao receber
+      e tem retry defensivo (antes só anunciava 1x no onPeerJoin)
+- [ ] Investigar conexões mesh meio-abertas (ICE) que só normalizam ao sair/voltar;
+      avaliar health-check + re-tentativa de conexão, e reannounce periódico
+
 ## 🎨 Transversais
 - [ ] Responsividade e temas
 - [ ] Empacotar builds atualizados (Win) a cada marco
