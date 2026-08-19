@@ -126,6 +126,7 @@ function join() {
         audioSinks.appendChild(a);
       }
       a.srcObject = stream;
+      configureAudioEl(a); // volume + dispositivo de saída escolhidos
       ensureParticipant(peerId);
       attachVAD(peerId, stream); // acende a borda verde quando falar
     } else if (kind === 'screen') {
@@ -156,22 +157,32 @@ $('chatForm').onsubmit = (e) => {
 };
 
 // ---- Microfone (voz) ----------------------------------------------------
-async function startMic() {
+// Adquire (ou re-adquire) o microfone conforme as configurações atuais.
+// Chamado no início e sempre que o usuário troca de mic ou de filtro.
+async function applyMic() {
+  const first = !micStream;
+  let newStream;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    micEnabled = true;
-    if (room) room.addStream(micStream, null, { kind: 'mic' });
-    ensureParticipant('local');
-    attachVAD('local', micStream);
-    updateMicButton();
+    newStream = await navigator.mediaDevices.getUserMedia(micConstraints());
   } catch (err) {
     addMessage('erro', 'microfone: ' + err.message);
     updateMicButton();
+    return;
   }
+  if (room && micStream) room.removeStream(micStream);
+  if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  micStream = newStream;
+  if (first) micEnabled = true;
+  micStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled));
+  if (room) room.addStream(micStream, null, { kind: 'mic' });
+  ensureParticipant('local');
+  attachVAD('local', micStream);
+  updateMicButton();
+  populateDevices(); // rótulos dos dispositivos ficam disponíveis após a permissão
 }
 
 $('btnMic').onclick = () => {
-  if (!micStream) return startMic();
+  if (!micStream) return applyMic();
   micEnabled = !micEnabled;
   micStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled));
   updateMicButton();
@@ -249,6 +260,7 @@ function stopScreen() {
 // ---- Detecção de voz (VAD) ---------------------------------------------
 let audioCtx = null;
 const vadCleanups = {}; // peerId -> cleanup
+const levels = {}; // peerId -> nível de áudio atual (0-255), p/ o medidor
 
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -277,6 +289,7 @@ function attachVAD(peerId, stream) {
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i];
     const avg = sum / data.length;
+    levels[peerId] = avg;
     const now = performance.now();
     if (avg > SPEAKING_THRESHOLD) lastSpoke = now;
     setSpeaking(peerId, now - lastSpoke < SPEAKING_HANGOVER);
@@ -533,11 +546,129 @@ function enableControls(on) {
   );
 }
 
+// ---- Configurações / dispositivos --------------------------------------
+const settings = Object.assign(
+  { micId: '', outputId: '', volume: 1, noise: true, echo: true, agc: true },
+  JSON.parse(localStorage.getItem('p2pSettings') || '{}')
+);
+function saveSettings() {
+  localStorage.setItem('p2pSettings', JSON.stringify(settings));
+}
+
+// Constraints do microfone conforme dispositivo e filtros escolhidos.
+function micConstraints() {
+  const audio = {
+    echoCancellation: settings.echo,
+    noiseSuppression: settings.noise,
+    autoGainControl: settings.agc,
+  };
+  if (settings.micId) audio.deviceId = { exact: settings.micId };
+  return { audio };
+}
+
+// Aplica volume e dispositivo de saída a um <audio> remoto.
+function configureAudioEl(el) {
+  el.volume = settings.volume;
+  if (settings.outputId && el.setSinkId) {
+    el.setSinkId(settings.outputId).catch(() => {});
+  }
+}
+function applyOutputToAll() {
+  audioSinks.querySelectorAll('audio').forEach(configureAudioEl);
+}
+
+async function populateDevices() {
+  let devices;
+  try {
+    devices = await navigator.mediaDevices.enumerateDevices();
+  } catch (e) {
+    return;
+  }
+  fillSelect($('selMic'), devices.filter((d) => d.kind === 'audioinput'), settings.micId, 'Microfone');
+  fillSelect($('selSpeaker'), devices.filter((d) => d.kind === 'audiooutput'), settings.outputId, 'Saída');
+}
+function fillSelect(sel, devices, selected, kind) {
+  sel.innerHTML = '';
+  if (!devices.length) {
+    sel.innerHTML = '<option value="">(nenhum dispositivo)</option>';
+    return;
+  }
+  devices.forEach((d, i) => {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || `${kind} ${i + 1}`;
+    if (d.deviceId === selected) o.selected = true;
+    sel.append(o);
+  });
+}
+
+function syncSettingsUI() {
+  $('rngVolume').value = Math.round(settings.volume * 100);
+  $('chkNoise').checked = settings.noise;
+  $('chkEcho').checked = settings.echo;
+  $('chkAgc').checked = settings.agc;
+}
+
+let meterRaf = null;
+function openSettings() {
+  syncSettingsUI();
+  populateDevices();
+  $('settingsModal').classList.remove('hidden');
+  const fill = $('meterFill');
+  const loop = () => {
+    const lvl = Math.min(100, ((levels['local'] || 0) / 60) * 100);
+    fill.style.width = lvl.toFixed(0) + '%';
+    meterRaf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function closeSettings() {
+  $('settingsModal').classList.add('hidden');
+  if (meterRaf) cancelAnimationFrame(meterRaf);
+}
+
+$('btnSettings').onclick = openSettings;
+$('settingsClose').onclick = closeSettings;
+$('selMic').onchange = (e) => {
+  settings.micId = e.target.value;
+  saveSettings();
+  applyMic();
+};
+$('selSpeaker').onchange = (e) => {
+  settings.outputId = e.target.value;
+  saveSettings();
+  applyOutputToAll();
+};
+$('rngVolume').oninput = (e) => {
+  settings.volume = e.target.value / 100;
+  saveSettings();
+  applyOutputToAll();
+};
+$('chkNoise').onchange = (e) => {
+  settings.noise = e.target.checked;
+  saveSettings();
+  applyMic();
+};
+$('chkEcho').onchange = (e) => {
+  settings.echo = e.target.checked;
+  saveSettings();
+  applyMic();
+};
+$('chkAgc').onchange = (e) => {
+  settings.agc = e.target.checked;
+  saveSettings();
+  applyMic();
+};
+if (navigator.mediaDevices) {
+  navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+}
+
 // ---- Auto-join na inicialização ----------------------------------------
 const params = new URLSearchParams(location.search);
 $('room').value = params.get('room') || DEFAULT_ROOM;
 if (params.get('nick')) $('nick').value = params.get('nick');
 
 updateMicButton();
+syncSettingsUI();
 join();
-startMic();
+applyMic();

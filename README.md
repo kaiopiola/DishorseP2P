@@ -58,6 +58,11 @@ npm run dev      # abre o Electron (sem rebuild)
   com a inicial do apelido (cor derivada do id). Quem está falando ganha uma
   **borda verde** por detecção de voz (VAD via Web Audio API — `AnalyserNode`).
   O palco espelha o participante/tela em foco, então ninguém sai da bandeja.
+- **Configurações** (botão ⚙): escolha de **microfone** e **saída de áudio**
+  (`setSinkId`), **volume de saída**, medidor de nível do mic ao vivo, e filtros
+  nativos do Chromium — **supressão de ruído**, cancelamento de eco e ganho
+  automático (constraints do `getUserMedia`). Trocar de mic ou filtro re-adquire
+  o stream em tempo real. Preferências ficam salvas em `localStorage`.
 
 ## Limitações conhecidas
 

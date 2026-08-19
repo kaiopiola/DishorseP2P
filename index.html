@@ -17,6 +17,7 @@
         <input id="nick" placeholder="seu apelido" />
         <button id="join">Entrar</button>
         <span id="status" class="status">desconectado</span>
+        <button id="btnSettings" title="Configurações">⚙</button>
       </div>
     </header>
 
@@ -51,6 +52,35 @@
 
     <!-- áudio remoto (mic dos peers) fica aqui, sem UI -->
     <div id="audioSinks" style="display: none"></div>
+
+    <!-- configurações -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Configurações</h2>
+        <div class="setting">
+          <label for="selMic">🎤 Microfone</label>
+          <select id="selMic"></select>
+        </div>
+        <div class="setting">
+          <label for="selSpeaker">🔊 Saída de áudio</label>
+          <select id="selSpeaker"></select>
+        </div>
+        <div class="setting">
+          <label for="rngVolume">Volume de saída</label>
+          <input type="range" id="rngVolume" min="0" max="100" />
+        </div>
+        <div class="setting">
+          <label>Nível do microfone</label>
+          <div class="meter"><div id="meterFill"></div></div>
+        </div>
+        <div class="setting checks">
+          <label><input type="checkbox" id="chkNoise" /> Supressão de ruído</label>
+          <label><input type="checkbox" id="chkEcho" /> Cancelamento de eco</label>
+          <label><input type="checkbox" id="chkAgc" /> Ganho automático</label>
+        </div>
+        <button id="settingsClose">Fechar</button>
+      </div>
+    </div>
 
     <!-- seletor de fonte de tela -->
     <div id="sourceModal" class="modal hidden">
