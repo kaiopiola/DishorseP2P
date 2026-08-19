@@ -102,11 +102,15 @@ Decisões tomadas:
       converte para WebP ≤1280px, assina (texto+img) e envia; Trystero faz o
       chunking do payload; thumbnail no chat + visualizador em tela cheia
 
-## 💬 Mensagens diretas / conversas privadas (novo)
-- [ ] DM 1:1 entre dois usuários (sala derivada das duas chaves públicas)
-- [ ] Lista de conversas privadas separada dos servidores
-- [ ] Assinadas/verificadas como os canais (o transporte já é E2E via DTLS)
-- [ ] (futuro) grupos privados (DM em grupo)
+## 💬 Mensagens diretas / conversas privadas
+- [x] DM 1:1 — sala derivada de hash(chaves ordenadas); botão 📨 no rail abre a
+      lista de DMs; "Enviar mensagem" no perfil de um membro inicia a conversa
+- [x] Lista de conversas privadas (localStorage) separada dos servidores
+- [x] Assinadas/verificadas como os canais (transporte P2P via DTLS)
+- [ ] (futuro) E2E com ECDH (hoje qualquer um que conheça as 2 chaves poderia
+      entrar na sala; restringir ao peer esperado + cifrar com chave derivada)
+- [ ] (futuro) imagens/histórico nas DMs já funcionam (reusam o chat); faltam
+      notificações e grupos privados
 
 ## 🎚️ Qualidade & performance de transmissão
 - [x] **Seleção de qualidade** (resolução máx.) e **limite de FPS** nas

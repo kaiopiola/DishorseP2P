@@ -13,6 +13,12 @@ const $ = (id) => document.getElementById(id);
 let spaces = store.loadSpaces();
 let currentSpaceId = spaces[0].id;
 let viewKey = null; // canal em exibição ("spaceId:channelId")
+let mode = 'server'; // 'server' | 'dm'
+let currentDM = null; // { pub, nick }
+let dmList = [];
+try {
+  dmList = JSON.parse(localStorage.getItem('p2pDMs') || '[]');
+} catch (e) {}
 
 // texto
 let textRoom = null;
@@ -93,9 +99,19 @@ const emptyView = $('emptyView');
 // ========================================================================
 function renderRail() {
   rail.innerHTML = '';
+  const home = document.createElement('button');
+  home.className = 'server-icon home' + (mode === 'dm' ? ' active' : '');
+  home.textContent = '📨';
+  home.title = 'Mensagens diretas';
+  home.onclick = selectDMMode;
+  rail.appendChild(home);
+  const sepTop = document.createElement('div');
+  sepTop.className = 'rail-sep';
+  rail.appendChild(sepTop);
+
   spaces.forEach((sp) => {
     const b = document.createElement('button');
-    b.className = 'server-icon' + (sp.id === currentSpaceId ? ' active' : '');
+    b.className = 'server-icon' + (mode === 'server' && sp.id === currentSpaceId ? ' active' : '');
     b.textContent = sp.icon || initialOf(sp.name);
     b.title = sp.name;
     b.onclick = () => selectSpace(sp.id);
@@ -119,6 +135,7 @@ function renderRail() {
 }
 
 function selectSpace(id) {
+  mode = 'server';
   currentSpaceId = id;
   renderRail();
   renderChannels();
@@ -128,12 +145,76 @@ function selectSpace(id) {
   else showEmpty();
 }
 
+// ---- Mensagens diretas (DMs) --------------------------------------------
+function saveDMs() {
+  localStorage.setItem('p2pDMs', JSON.stringify(dmList));
+}
+function addDM(pub, nick) {
+  const ex = dmList.find((d) => d.pub === pub);
+  if (ex) ex.nick = nick;
+  else dmList.push({ pub, nick });
+  saveDMs();
+}
+async function dmKey(peerPub) {
+  const pair = [identity.pub(), peerPub].sort().join(':');
+  return 'dm:' + (await identity.hashId(pair));
+}
+function selectDMMode() {
+  mode = 'dm';
+  renderRail();
+  renderChannels();
+  if (currentDM) selectDM(currentDM.pub, currentDM.nick);
+  else showEmpty();
+}
+async function selectDM(pub, nick) {
+  mode = 'dm';
+  addDM(pub, nick);
+  currentDM = { pub, nick };
+  const k = await dmKey(pub);
+  viewKey = k;
+  textView.classList.remove('hidden');
+  voiceView.classList.add('hidden');
+  emptyView.classList.add('hidden');
+  $('textTitle').textContent = '@' + nick;
+  joinText(k);
+  renderRail();
+  renderChannels();
+}
+function renderDMList() {
+  spaceNameEl.textContent = 'Mensagens Diretas';
+  $('btnSpaceMenu').style.display = 'none';
+  channelList.innerHTML = '';
+  if (!dmList.length) {
+    const p = document.createElement('div');
+    p.className = 'cat-label';
+    p.innerHTML = '<span>Nenhuma conversa ainda</span>';
+    channelList.append(p);
+    return;
+  }
+  dmList.forEach((d) => {
+    const row = document.createElement('div');
+    row.className = 'channel' + (currentDM && currentDM.pub === d.pub ? ' active' : '');
+    const av = document.createElement('div');
+    av.className = 'avatar dm-av';
+    av.textContent = initialOf(d.nick);
+    av.style.background = `hsl(${hueOf(d.pub)} 55% 45%)`;
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = d.nick;
+    row.append(av, nm);
+    row.onclick = () => selectDM(d.pub, d.nick);
+    channelList.append(row);
+  });
+}
+
 // ========================================================================
 //  LISTA DE CANAIS
 // ========================================================================
 function renderChannels() {
+  if (mode === 'dm') return renderDMList();
   const sp = getSpace(currentSpaceId);
   if (!sp) return;
+  $('btnSpaceMenu').style.display = '';
   spaceNameEl.textContent = sp.name;
   channelList.innerHTML = '';
 
@@ -1685,15 +1766,26 @@ function openMyProfile() {
   $('profileView').style.display = 'none';
   openModal('profileModal');
 }
+let profileViewPub = null;
+let profileViewNick = null;
 function openPeerProfile(pid) {
   applyAvatarEl($('profileAvatar'), pid);
   $('profileNick').textContent = nickOf(pid) + (verifiedOf(pid) ? ' ✓' : '');
   $('profileFp').textContent = pubOf(pid) ? '#' + identity.fingerprint(pubOf(pid)) : '';
   $('profileBioView').textContent = bioOf(pid) || 'Sem bio.';
+  profileViewPub = pubOf(pid);
+  profileViewNick = nickOf(pid);
+  // botão de DM só para outros usuários com chave conhecida
+  $('profileMessage').style.display = profileViewPub && profileViewPub !== identity.pub() ? '' : 'none';
   $('profileEdit').style.display = 'none';
   $('profileView').style.display = '';
   openModal('profileModal');
 }
+$('profileMessage').onclick = () => {
+  if (!profileViewPub) return;
+  closeModal('profileModal');
+  selectDM(profileViewPub, profileViewNick);
+};
 $('meBar').querySelector('.me-info').onclick = openMyProfile;
 $('profileCancel').onclick = () => closeModal('profileModal');
 $('profileViewClose').onclick = () => closeModal('profileModal');
