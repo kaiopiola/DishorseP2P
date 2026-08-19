@@ -28,9 +28,12 @@ const textIdents = {}; // peerId -> { pub, nick, verified } (por sala de texto a
 
 // mídia local
 let micStream = null;
-let micEnabled = false;
+let micEnabled = true; // intenção de mic (aplicada ao entrar na voz)
+let deafened = false; // surdo: não toca o áudio dos peers
 let camStream = null;
 let screenStream = null;
+let screenWatchers = new Set(); // peers assistindo MINHA tela
+let currentlyWatching = null; // peerId de quem estou assistindo (tela)
 
 // tiles de vídeo
 const tiles = {};
@@ -224,6 +227,7 @@ function voiceMemberEl(pid) {
   if (verifiedOf(pid)) right.append(verifiedBadge(pid));
   const st = stateOf(pid);
   if (st.muted) right.append(statusIcon('🔇', 'mudo'));
+  if (st.deaf) right.append(statusIcon('🙉', 'surdo (saída mutada)'));
   if (st.cam) right.append(statusIcon('📷', 'câmera ligada'));
   if (st.screen) right.append(statusIcon('🖥️', 'transmitindo tela'));
   // botão de banir: só o dono do servidor, e não em si mesmo
@@ -431,6 +435,8 @@ function leaveVoice() {
   Object.keys(tiles).forEach(removeTile);
   Object.keys(vadCleanups).forEach(detachVAD);
   voiceParticipants = {};
+  screenWatchers = new Set();
+  currentlyWatching = null;
   audioSinks.innerHTML = '';
   focusedKey = null;
   try {
@@ -473,6 +479,15 @@ function setupVoiceRoom(room, spaceId) {
     renderChannels();
   });
 
+  // quem está assistindo MINHA tela (o receptor sinaliza ao focar/desfocar)
+  const [sendWatch, getWatch] = room.makeAction('watch');
+  if (voice) voice.sendWatch = sendWatch;
+  getWatch((msg, pid) => {
+    if (msg && msg.on) screenWatchers.add(pid);
+    else screenWatchers.delete(pid);
+    renderWatchers();
+  });
+
   const announceMan = manifestSync(room, spaceId);
   if (voice) voice.announceMan = announceMan;
 
@@ -500,6 +515,7 @@ function setupVoiceRoom(room, spaceId) {
     const a = $('audio-' + pid);
     if (a) a.remove();
     delete voiceParticipants[pid];
+    if (screenWatchers.delete(pid)) renderWatchers();
     renderChannels();
     renderStage();
   });
@@ -541,12 +557,12 @@ function updateVoiceStatus() {
 
 // ---- estado de mídia (para ícones e broadcast) --------------------------
 function localState() {
-  return { muted: !micStream || !micEnabled, cam: !!camStream, screen: !!screenStream };
+  return { muted: !micStream || !micEnabled, deaf: deafened, cam: !!camStream, screen: !!screenStream };
 }
 function stateOf(pid) {
   return pid === 'local'
     ? localState()
-    : voiceParticipants[pid]?.state || { muted: true, cam: false, screen: false };
+    : voiceParticipants[pid]?.state || { muted: true, deaf: false, cam: false, screen: false };
 }
 function broadcastState() {
   if (voice && voice.sendState) voice.sendState(localState());
@@ -606,8 +622,7 @@ async function applyMic() {
   if (voice && micStream) voice.room.removeStream(micStream);
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   micStream = ns;
-  if (first) micEnabled = true;
-  micStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled));
+  micStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled)); // respeita intenção
   if (voice) voice.room.addStream(micStream, null, { kind: 'mic' });
   ensureParticipant('local');
   attachVAD('local', micStream);
@@ -627,11 +642,39 @@ function stopMicHard() {
 
 $('btnMic').onclick = () => {
   if (!micStream) return applyMic();
-  micEnabled = !micEnabled;
-  micStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled));
-  updateMicButton();
-  updateVoiceUI();
+  setMicEnabled(!micEnabled);
 };
+$('meMic').onclick = () => setMicEnabled(!micEnabled);
+$('meDeafen').onclick = () => setDeafen(!deafened);
+
+function setMicEnabled(v) {
+  micEnabled = v;
+  settings.micMuted = !v;
+  saveSettings();
+  if (micStream) micStream.getAudioTracks().forEach((t) => (t.enabled = v));
+  updateMicButton();
+  updateMeControls();
+  if (voice) updateVoiceUI();
+}
+function setDeafen(v) {
+  deafened = v;
+  settings.deafened = v;
+  saveSettings();
+  applyDeafen();
+  updateMeControls();
+  if (voice) updateVoiceUI();
+}
+function applyDeafen() {
+  audioSinks.querySelectorAll('audio').forEach((a) => (a.muted = deafened));
+}
+function updateMeControls() {
+  const m = $('meMic');
+  m.textContent = micEnabled ? '🎤' : '🔇';
+  m.classList.toggle('off', !micEnabled);
+  const d = $('meDeafen');
+  d.textContent = deafened ? '🙉' : '🎧';
+  d.classList.toggle('off', deafened);
+}
 function updateMicButton() {
   const b = $('btnMic');
   if (!micStream) {
@@ -695,6 +738,7 @@ function stopScreen() {
   if (voice) voice.room.removeStream(screenStream);
   screenStream.getTracks().forEach((t) => t.stop());
   screenStream = null;
+  screenWatchers = new Set();
   removeTile('local:screen');
   $('btnScreen').classList.remove('active');
   updateVoiceUI();
@@ -802,6 +846,28 @@ function setFocus(k) {
   }
   focusedKey = k;
   renderStage();
+  updateWatching();
+}
+
+// sinaliza ao dono da tela que estou (ou parei de) assistir
+function updateWatching() {
+  if (!voice || !voice.sendWatch) return;
+  const t = focusedKey && tiles[focusedKey];
+  const watchPid = t && t.kind === 'screen' && t.peerId !== 'local' ? t.peerId : null;
+  if (watchPid === currentlyWatching) return;
+  if (currentlyWatching) voice.sendWatch({ on: false }, currentlyWatching);
+  if (watchPid) voice.sendWatch({ on: true }, watchPid);
+  currentlyWatching = watchPid;
+}
+
+// mostra no meu tile de tela quantos/quem está assistindo
+function renderWatchers() {
+  const t = tiles['local:screen'];
+  if (!t) return;
+  const n = screenWatchers.size;
+  const names = [...screenWatchers].map((pid) => nickOf(pid)).join(', ');
+  t.lab.textContent = `você · tela${n ? ` · 👁 ${n}` : ''}`;
+  t.el.title = n ? `Assistindo: ${names}` : '';
 }
 
 function removeTile(k) {
@@ -1035,6 +1101,7 @@ const settings = Object.assign(
   {
     micId: '', outputId: '', volume: 1, noise: true, echo: true, agc: true,
     maxHeight: 720, maxFps: 30, // qualidade de transmissão (0 = sem limite)
+    micMuted: false, deafened: false, // config de entrada na call
     turnUrl: '', turnUser: '', turnPass: '',
   },
   JSON.parse(localStorage.getItem('p2pSettings') || '{}')
@@ -1116,6 +1183,7 @@ function micConstraints() {
 }
 function configureAudioEl(el) {
   el.volume = settings.volume;
+  el.muted = deafened;
   if (settings.outputId && el.setSinkId) el.setSinkId(settings.outputId).catch(() => {});
 }
 function applyOutputToAll() {
@@ -1584,6 +1652,10 @@ if (params.get('nick')) store.setNick(params.get('nick'));
   } catch (err) {
     console.error('[id] falha ao iniciar identidade:', err);
   }
+  // aplica a config de entrada (mic/surdo) salva
+  micEnabled = !settings.micMuted;
+  deafened = settings.deafened;
+  updateMeControls();
   if (store.getNick()) {
     boot();
     const jv = params.get('joinVoice');

@@ -126,8 +126,10 @@ input, select, button { font-family: inherit; }
 }
 .me-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
 .me-info span { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.me-bar button { background: none; border: none; color: var(--txt-dim); font-size: 18px; padding: 4px; }
-.me-bar button:hover { color: var(--txt); }
+.me-actions { display: flex; align-items: center; gap: 2px; }
+.me-bar button { background: none; border: none; color: var(--txt-dim); font-size: 16px; padding: 5px 6px; border-radius: 6px; }
+.me-bar button:hover { color: var(--txt); background: rgba(255,255,255,0.05); }
+.me-bar button.off { background: rgba(239,68,68,0.15); }
 
 /* avatar circular reutilizável */
 .avatar {
