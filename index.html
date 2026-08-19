@@ -154,11 +154,34 @@
         <h2 id="spaceMenuTitle">Servidor</h2>
         <div class="settings-actions col">
           <button id="menuAddChannel">➕ Criar canal</button>
+          <button id="menuRenameSpace">✎ Renomear servidor</button>
+          <button id="menuBanned">🚫 Gerenciar banidos</button>
           <button id="menuCopyInvite">🔗 Copiar convite</button>
           <button id="menuLeaveSpace" class="danger">🚪 Sair do servidor</button>
           <button id="spaceMenuClose">Fechar</button>
         </div>
         <p class="hint" id="inviteCopied" style="display: none">Convite copiado! ✔</p>
+      </div>
+    </div>
+
+    <!-- prompt de texto genérico -->
+    <div id="promptModal" class="modal hidden">
+      <div class="modal-content">
+        <h2 id="promptTitle">—</h2>
+        <input id="promptInput" autocomplete="off" style="width: 100%; margin-bottom: 14px" />
+        <div class="settings-actions">
+          <button id="promptOk">OK</button>
+          <button id="promptCancel">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- gerenciar banidos -->
+    <div id="bannedModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Usuários banidos</h2>
+        <div id="bannedList"></div>
+        <button id="bannedClose">Fechar</button>
       </div>
     </div>
 

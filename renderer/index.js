@@ -168,8 +168,8 @@ function catLabel(text, onAdd) {
 
 function channelEl(spaceId, ch) {
   const k = key(spaceId, ch.id);
-  const b = document.createElement('button');
-  b.className =
+  const row = document.createElement('div');
+  row.className =
     'channel ' +
     (ch.type === 'voice' ? 'voice ' : '') +
     (viewKey === k ? 'active ' : '') +
@@ -180,9 +180,30 @@ function channelEl(spaceId, ch) {
   const nm = document.createElement('span');
   nm.className = 'nm';
   nm.textContent = ch.name;
-  b.append(ico, nm);
-  b.onclick = () => selectChannel(spaceId, ch.id);
-  return b;
+  row.append(ico, nm);
+  row.onclick = () => selectChannel(spaceId, ch.id);
+  // ações do dono (renomear/remover)
+  if (store.canEdit(getSpace(spaceId))) {
+    const actions = document.createElement('span');
+    actions.className = 'ch-actions';
+    const ren = document.createElement('button');
+    ren.textContent = '✎';
+    ren.title = 'Renomear canal';
+    ren.onclick = (e) => {
+      e.stopPropagation();
+      renameChannel(spaceId, ch);
+    };
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.title = 'Remover canal';
+    del.onclick = (e) => {
+      e.stopPropagation();
+      removeChannel(spaceId, ch);
+    };
+    actions.append(ren, del);
+    row.append(actions);
+  }
+  return row;
 }
 
 function voiceMemberEl(pid) {
@@ -1247,6 +1268,109 @@ function closeModal(id) {
   $(id).classList.add('hidden');
 }
 
+// prompt de texto reutilizável (Electron não suporta window.prompt)
+function promptText(title, initial) {
+  return new Promise((resolve) => {
+    $('promptTitle').textContent = title;
+    const input = $('promptInput');
+    input.value = initial || '';
+    openModal('promptModal');
+    input.focus();
+    input.select();
+    const done = (val) => {
+      closeModal('promptModal');
+      $('promptOk').onclick = null;
+      $('promptCancel').onclick = null;
+      input.onkeydown = null;
+      resolve(val);
+    };
+    $('promptOk').onclick = () => done(input.value.trim() || null);
+    $('promptCancel').onclick = () => done(null);
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') done(input.value.trim() || null);
+      if (e.key === 'Escape') done(null);
+    };
+  });
+}
+
+// ---- Gerenciamento pelo dono (renomear/remover/desbanir) ----------------
+async function commitManifest(sp) {
+  if (store.isOwned(sp)) await store.bumpAndSign(sp);
+  store.saveSpaces(spaces);
+  broadcastManifest(sp.id);
+}
+async function renameChannel(spaceId, ch) {
+  const name = await promptText('Renomear canal', ch.name);
+  if (!name) return;
+  const sp = getSpace(spaceId);
+  const c = sp.channels.find((x) => x.id === ch.id);
+  if (!c) return;
+  c.name = name;
+  await commitManifest(sp);
+  renderChannels();
+  const k = key(spaceId, ch.id);
+  if (voice && voice.key === k) {
+    voice.name = name;
+    updateVoiceStatus();
+  }
+  if (viewKey === k) {
+    if (c.type === 'text') $('textTitle').textContent = name;
+    else $('voiceTitle').textContent = name;
+  }
+}
+async function removeChannel(spaceId, ch) {
+  if (!confirm(`Remover o canal "${ch.name}"?`)) return;
+  const sp = getSpace(spaceId);
+  sp.channels = sp.channels.filter((c) => c.id !== ch.id);
+  await commitManifest(sp);
+  const k = key(spaceId, ch.id);
+  if (voice && voice.key === k) leaveVoice();
+  renderChannels();
+  if (viewKey === k) {
+    const first = sp.channels.find((c) => c.type === 'text') || sp.channels[0];
+    if (first) selectChannel(spaceId, first.id);
+    else showEmpty();
+  }
+}
+async function renameSpace() {
+  const sp = getSpace(currentSpaceId);
+  if (!store.canEdit(sp)) return;
+  const name = await promptText('Renomear servidor', sp.name);
+  if (!name) return;
+  sp.name = name;
+  await commitManifest(sp);
+  renderRail();
+  renderChannels();
+}
+function openBanned() {
+  const sp = getSpace(currentSpaceId);
+  const list = $('bannedList');
+  list.innerHTML = '';
+  const banned = sp.banned || [];
+  if (!banned.length) {
+    list.innerHTML = '<p class="hint">Ninguém banido.</p>';
+  }
+  banned.forEach((pub) => {
+    const row = document.createElement('div');
+    row.className = 'banned-row';
+    const label = document.createElement('span');
+    label.textContent = '#' + identity.fingerprint(pub);
+    const unban = document.createElement('button');
+    unban.textContent = 'Desbanir';
+    unban.onclick = () => unbanUser(pub);
+    row.append(label, unban);
+    list.append(row);
+  });
+  openModal('bannedModal');
+}
+async function unbanUser(pub) {
+  const sp = getSpace(currentSpaceId);
+  if (!store.isOwner(sp)) return;
+  sp.banned = (sp.banned || []).filter((p) => p !== pub);
+  await commitManifest(sp);
+  openBanned();
+}
+
 $('spaceCancel').onclick = () => closeModal('spaceModal');
 $('spaceCreate').onclick = async () => {
   const name = $('spaceNameInput').value.trim();
@@ -1309,6 +1433,8 @@ $('btnSpaceMenu').onclick = () => {
   const role = store.isOwner(sp) ? ' · você é o dono' : sp.owner ? ' · membro' : ' · público';
   $('spaceMenuTitle').textContent = sp.name + role;
   $('menuAddChannel').style.display = store.canEdit(sp) ? '' : 'none';
+  $('menuRenameSpace').style.display = store.canEdit(sp) ? '' : 'none';
+  $('menuBanned').style.display = store.isOwner(sp) ? '' : 'none';
   $('inviteCopied').style.display = 'none';
   openModal('spaceMenuModal');
 };
@@ -1317,6 +1443,15 @@ $('menuAddChannel').onclick = () => {
   closeModal('spaceMenuModal');
   openChannelModal('text');
 };
+$('menuRenameSpace').onclick = () => {
+  closeModal('spaceMenuModal');
+  renameSpace();
+};
+$('menuBanned').onclick = () => {
+  closeModal('spaceMenuModal');
+  openBanned();
+};
+$('bannedClose').onclick = () => closeModal('bannedModal');
 $('menuCopyInvite').onclick = async () => {
   const code = store.encodeInvite(getSpace(currentSpaceId));
   try {

@@ -61,14 +61,17 @@ Decisões tomadas:
 - [x] Propagação P2P (gossip): adota maior versão válida assinada pelo dono
 - [x] Edição restrita ao dono (criar canal já gated; servidor público sem dono é local)
 - [x] Convite verificado (rejeita manifesto com assinatura inválida)
-- [ ] Remover/renomear canal e renomear servidor (dono) na UI
+- [x] Remover/renomear canal e renomear servidor (dono) na UI — hover ✎/✕ nos
+      canais + menu do servidor; reassina e propaga
 - [x] **Banir/remover usuários do servidor (só dono)** — botão ✕ na lista da call;
       adiciona a chave a `banned`, reassina e propaga; clientes honestos escondem os
       banidos e o próprio banido sai do servidor ao receber o manifesto (cooperativo)
-- [ ] Desbanir (remover de `banned`) na UI
-- [ ] Papéis (dono/admin/membro) — admins adicionais assinados pelo dono
+- [x] Desbanir (remover de `banned`) na UI — menu do servidor → Gerenciar banidos
+- [ ] (futuro) Papéis (dono/admin/membro) — admins adicionais assinados pelo dono
+      > MUDA a decisão "só o dono edita"; requer nova discussão de autoridade
 - [ ] (futuro) Transferência de propriedade
 - [ ] (futuro) Dono offline: co-admins / quórum
+> M3 ESSENCIAL concluído. Restantes marcados (futuro) mexem no modelo de autoridade.
 > Servidor legado "Daggerfall" (sem dono) segue como espaço público local, sem
 > verificação de manifesto.
 

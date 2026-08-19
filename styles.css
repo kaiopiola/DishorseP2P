@@ -77,7 +77,15 @@ input, select, button { font-family: inherit; }
 .channel.active { background: rgba(255,255,255,0.08); color: #fff; }
 .channel .ico { opacity: 0.7; font-size: 14px; width: 18px; text-align: center; }
 .channel .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel { cursor: pointer; }
 .channel.voice.connected { color: var(--green); }
+.ch-actions { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.channel:hover .ch-actions { opacity: 1; }
+.ch-actions button { background: none; border: none; color: var(--txt-dim); font-size: 12px; padding: 0 3px; }
+.ch-actions button:hover { color: var(--txt); }
+.banned-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.banned-row button { background: #383c46; border: 1px solid #3a3f4a; color: var(--txt); border-radius: 6px; padding: 5px 10px; font-size: 13px; }
+.banned-row button:hover { background: #434855; }
 .voice-members { padding: 2px 0 6px 26px; }
 .voice-member {
   display: flex; align-items: center; gap: 8px; padding: 3px 6px;
