@@ -50,11 +50,12 @@
         <section class="text-view hidden" id="textView">
           <header class="topbar"><span class="ch-hash">#</span> <span id="textTitle">—</span></header>
           <ul id="messages"></ul>
+          <div id="chatPreview" class="chat-preview hidden"></div>
           <form id="chatForm">
-            <button type="button" id="chatAttach" class="attach-btn" title="Enviar imagem">📎</button>
+            <button type="button" id="chatAttach" class="attach-btn" title="Anexar imagem">📎</button>
             <input type="file" id="chatImageInput" accept="image/*" style="display: none" />
             <input id="chatInput" placeholder="Mensagem..." autocomplete="off" />
-            <button id="chatSend">Enviar</button>
+            <button id="chatSend" class="send-btn">Enviar</button>
           </form>
         </section>
 
@@ -86,11 +87,12 @@
             <aside class="voice-chat collapsed" id="voiceChat">
               <div class="vc-chat-header">Chat da sala</div>
               <div class="vc-messages" id="voiceChatMessages"></div>
+              <div id="voiceChatPreview" class="chat-preview hidden"></div>
               <form id="voiceChatForm">
-                <button type="button" id="voiceChatAttach" class="attach-btn" title="Enviar imagem">📎</button>
+                <button type="button" id="voiceChatAttach" class="attach-btn" title="Anexar imagem">📎</button>
                 <input type="file" id="voiceChatImageInput" accept="image/*" style="display: none" />
                 <input id="voiceChatInput" placeholder="Mensagem..." autocomplete="off" />
-                <button>Enviar</button>
+                <button class="send-btn">Enviar</button>
               </form>
             </aside>
           </div>

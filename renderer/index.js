@@ -30,8 +30,41 @@ const messagesByChannel = {}; // key -> [{from,text,sys,verified}]
 // chat lateral do canal de voz (sala própria por canal de voz)
 let voiceChatRoom = null;
 let voiceChatSend = null;
+let voiceChatSendDel = null;
 const voiceChatIdents = {};
 const voiceChatMsgs = [];
+const voiceChatDeleted = new Set();
+
+// anexos pendentes (aguardando "Enviar") e exclusão
+let pendingChatImage = null;
+let pendingVoiceImage = null;
+let textSendDel = null;
+const deletedIdsByChannel = {}; // k -> Set de ids apagados (oculta chegadas tardias)
+const msgId = () => Math.random().toString(36).slice(2, 10);
+
+function showChatPreview(containerId, img, onClear) {
+  const p = $(containerId);
+  p.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'preview-chip';
+  const image = document.createElement('img');
+  image.src = img;
+  const x = document.createElement('button');
+  x.textContent = '✕';
+  x.title = 'Remover anexo';
+  x.onclick = onClear;
+  wrap.append(image, x);
+  p.append(wrap);
+  p.classList.remove('hidden');
+}
+function addDeleteBtn(el, onDel) {
+  const b = document.createElement('button');
+  b.className = 'msg-del';
+  b.textContent = '🗑';
+  b.title = 'Excluir';
+  b.onclick = onDel;
+  el.appendChild(b);
+}
 
 // voz (persiste enquanto navego em canais de texto)
 let voice = null; // { key, spaceId, channelId, name, room }
@@ -415,30 +448,58 @@ function joinText(k) {
   // chat assinado
   const [send, get] = textRoom.makeAction('chat');
   sendChat = async (text, img) => {
+    const id = msgId();
     const sig = await identity.sign(signContent(text, img));
-    send({ text, img, sig });
+    send({ text, img, sig, id });
+    return id;
   };
   get(async (payload, pid) => {
+    if (deletedIdsByChannel[k]?.has(payload.id)) return; // já apagada
     const id = textIdents[pid];
     const nick = id?.nick || pid.slice(0, 6);
     const verified = id
       ? await identity.verify(id.pub, payload.sig, signContent(payload.text, payload.img))
       : false;
-    pushMsg(k, nick, payload.text, false, verified, payload.img);
+    pushMsg(k, nick, payload.text, false, verified, payload.img, { id: payload.id, authorPub: id?.pub });
+  });
+
+  const [sendDel, getDel] = textRoom.makeAction('del');
+  textSendDel = async (id) => {
+    const sig = await identity.sign('del:' + id);
+    sendDel({ id, sig });
+  };
+  getDel(async (payload) => {
+    const m = (messagesByChannel[k] || []).find((x) => x.id === payload.id);
+    if (!m) {
+      (deletedIdsByChannel[k] || (deletedIdsByChannel[k] = new Set())).add(payload.id);
+      return;
+    }
+    const ok = m.authorPub && (await identity.verify(m.authorPub, payload.sig, 'del:' + payload.id));
+    if (ok) {
+      m.deleted = true;
+      if (k === textRoomKey) renderMessages(k);
+    }
   });
 
   renderMessages(k);
 }
 
-function pushMsg(k, from, text, sys, verified, img) {
-  const m = { from, text, sys, verified, img };
+function pushMsg(k, from, text, sys, verified, img, meta) {
+  const m = { from, text, sys, verified, img, id: meta?.id, authorPub: meta?.authorPub, mine: meta?.mine, deleted: false };
   (messagesByChannel[k] || (messagesByChannel[k] = [])).push(m);
   if (k === textRoomKey && !textView.classList.contains('hidden')) appendMsgEl(m);
 }
 
 function renderMessages(k) {
   messages.innerHTML = '';
-  (messagesByChannel[k] || []).forEach(appendMsgEl);
+  (messagesByChannel[k] || []).filter((m) => !m.deleted).forEach(appendMsgEl);
+}
+
+function deleteTextMsg(id) {
+  const m = (messagesByChannel[textRoomKey] || []).find((x) => x.id === id);
+  if (m) m.deleted = true;
+  renderMessages(textRoomKey);
+  if (textSendDel) textSendDel(id);
 }
 
 // monta o corpo de uma mensagem (texto/imagem/selo) em um container
@@ -466,6 +527,7 @@ function fillMsgEl(el, { from, text, sys, verified, img }) {
 function appendMsgEl(m) {
   const li = document.createElement('li');
   fillMsgEl(li, m);
+  if (m.mine && !m.sys) addDeleteBtn(li, () => deleteTextMsg(m.id));
   messages.append(li);
   messages.scrollTop = messages.scrollHeight;
 }
@@ -476,28 +538,35 @@ function openImageViewer(src) {
 }
 $('imageModal').onclick = () => closeModal('imageModal');
 
-$('chatForm').onsubmit = (e) => {
+$('chatForm').onsubmit = async (e) => {
   e.preventDefault();
   const input = $('chatInput');
   const text = input.value.trim();
-  if (!text || !sendChat) return;
-  sendChat(text, null);
-  pushMsg(textRoomKey, `${myNick()} (você)`, text, false, true, null);
+  if ((!text && !pendingChatImage) || !sendChat) return;
+  const img = pendingChatImage;
+  const id = await sendChat(text, img);
+  pushMsg(textRoomKey, `${myNick()} (você)`, text, false, true, img, { id, authorPub: identity.pub(), mine: true });
   input.value = '';
+  clearChatPreview();
 };
 $('chatAttach').onclick = () => $('chatImageInput').click();
 $('chatImageInput').onchange = async (e) => {
   const file = e.target.files[0];
-  if (!file || !sendChat) return;
+  if (!file) return;
   try {
-    const img = await imageFileToChat(file);
-    sendChat('', img);
-    pushMsg(textRoomKey, `${myNick()} (você)`, '', false, true, img);
+    pendingChatImage = await imageFileToChat(file);
+    showChatPreview('chatPreview', pendingChatImage, clearChatPreview);
   } catch (err) {
     pushSys('imagem: ' + err.message);
   }
   e.target.value = '';
 };
+function clearChatPreview() {
+  pendingChatImage = null;
+  const p = $('chatPreview');
+  p.classList.add('hidden');
+  p.innerHTML = '';
+}
 
 // ---- Canal de voz -------------------------------------------------------
 function showVoiceView(spaceId, ch) {
@@ -709,17 +778,34 @@ function joinVoiceChat(k) {
   vchatAnnounceIdent = announce;
   const [send, get] = voiceChatRoom.makeAction('chat');
   voiceChatSend = async (text, img) => {
+    const id = msgId();
     const sig = await identity.sign(signContent(text, img));
-    send({ text, img, sig });
+    send({ text, img, sig, id });
+    return id;
   };
   get(async (payload, pid) => {
+    if (voiceChatDeleted.has(payload.id)) return;
     const id = voiceChatIdents[pid];
     const nick = id?.nick || pid.slice(0, 6);
     const verified = id
       ? await identity.verify(id.pub, payload.sig, signContent(payload.text, payload.img))
       : false;
-    voiceChatMsgs.push({ from: nick, text: payload.text, verified, img: payload.img });
+    voiceChatMsgs.push({ id: payload.id, from: nick, text: payload.text, verified, img: payload.img, authorPub: id?.pub });
     renderVoiceChat();
+  });
+  const [sendDel, getDel] = voiceChatRoom.makeAction('del');
+  voiceChatSendDel = async (id) => {
+    const sig = await identity.sign('del:' + id);
+    sendDel({ id, sig });
+  };
+  getDel(async (payload) => {
+    const m = voiceChatMsgs.find((x) => x.id === payload.id);
+    if (!m) return voiceChatDeleted.add(payload.id);
+    const ok = m.authorPub && (await identity.verify(m.authorPub, payload.sig, 'del:' + payload.id));
+    if (ok) {
+      m.deleted = true;
+      renderVoiceChat();
+    }
   });
   voiceChatRoom.onPeerJoin((pid) => {
     announce(pid);
@@ -738,7 +824,10 @@ function leaveVoiceChat() {
     voiceChatRoom = null;
   }
   voiceChatSend = null;
+  voiceChatSendDel = null;
   voiceChatMsgs.length = 0;
+  voiceChatDeleted.clear();
+  pendingVoiceImage = null;
   for (const p in voiceChatIdents) delete voiceChatIdents[p];
   renderVoiceChat();
 }
@@ -747,39 +836,54 @@ function renderVoiceChat() {
   const box = $('voiceChatMessages');
   if (!box) return;
   box.innerHTML = '';
-  voiceChatMsgs.forEach((m) => {
-    const div = document.createElement('div');
-    div.className = 'vc-msg';
-    fillMsgEl(div, m);
-    box.append(div);
-  });
+  voiceChatMsgs
+    .filter((m) => !m.deleted)
+    .forEach((m) => {
+      const div = document.createElement('div');
+      div.className = 'vc-msg';
+      fillMsgEl(div, m);
+      if (m.mine) addDeleteBtn(div, () => deleteVoiceMsg(m.id));
+      box.append(div);
+    });
   box.scrollTop = box.scrollHeight;
 }
+function deleteVoiceMsg(id) {
+  const m = voiceChatMsgs.find((x) => x.id === id);
+  if (m) m.deleted = true;
+  renderVoiceChat();
+  if (voiceChatSendDel) voiceChatSendDel(id);
+}
 
-$('voiceChatForm').onsubmit = (e) => {
+$('voiceChatForm').onsubmit = async (e) => {
   e.preventDefault();
   const input = $('voiceChatInput');
   const text = input.value.trim();
-  if (!text || !voiceChatSend) return;
-  voiceChatSend(text, null);
-  voiceChatMsgs.push({ from: `${myNick()} (você)`, text, verified: true });
+  if ((!text && !pendingVoiceImage) || !voiceChatSend) return;
+  const img = pendingVoiceImage;
+  const id = await voiceChatSend(text, img);
+  voiceChatMsgs.push({ id, from: `${myNick()} (você)`, text, verified: true, img, authorPub: identity.pub(), mine: true });
   renderVoiceChat();
   input.value = '';
+  clearVoicePreview();
 };
 $('voiceChatAttach').onclick = () => $('voiceChatImageInput').click();
 $('voiceChatImageInput').onchange = async (e) => {
   const file = e.target.files[0];
-  if (!file || !voiceChatSend) return;
+  if (!file) return;
   try {
-    const img = await imageFileToChat(file);
-    voiceChatSend('', img);
-    voiceChatMsgs.push({ from: `${myNick()} (você)`, text: '', verified: true, img });
-    renderVoiceChat();
+    pendingVoiceImage = await imageFileToChat(file);
+    showChatPreview('voiceChatPreview', pendingVoiceImage, clearVoicePreview);
   } catch (err) {
     pushSys('imagem: ' + err.message);
   }
   e.target.value = '';
 };
+function clearVoicePreview() {
+  pendingVoiceImage = null;
+  const p = $('voiceChatPreview');
+  p.classList.add('hidden');
+  p.innerHTML = '';
+}
 $('voiceChatToggle').onclick = () => $('voiceChat').classList.toggle('collapsed');
 
 // ---- estado de mídia (para ícones e broadcast) --------------------------

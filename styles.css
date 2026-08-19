@@ -160,14 +160,25 @@ input, select, button { font-family: inherit; }
 #messages li b { color: #fff; }
 #messages li.sys { color: var(--txt-dim); font-size: 13px; font-style: italic; }
 #chatForm { display: flex; gap: 8px; padding: 14px 16px; align-items: center; }
-.attach-btn { background: #383c46; border: none; color: var(--txt); border-radius: 8px; padding: 9px 11px; font-size: 15px; }
+.attach-btn { flex: 0 0 auto; height: 40px; width: 44px; display: flex; align-items: center; justify-content: center; background: #383c46; border: none; color: var(--txt); border-radius: 8px; font-size: 20px; padding: 0; }
 .attach-btn:hover { background: #434855; }
+.send-btn { height: 40px; padding: 0 18px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-weight: 600; }
+.send-btn:hover { background: #4752c4; }
+/* preview do anexo aguardando envio */
+.chat-preview { padding: 8px 16px 0; }
+.chat-preview.hidden { display: none; }
+.preview-chip { position: relative; display: inline-block; }
+.preview-chip img { max-height: 80px; max-width: 140px; border-radius: 8px; border: 1px solid var(--line); display: block; }
+.preview-chip button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--danger); color: #fff; font-size: 11px; cursor: pointer; }
+/* botão de excluir mensagem (aparece no hover) */
+.msg-del { background: none; border: none; color: var(--txt-dim); font-size: 12px; cursor: pointer; margin-left: 6px; opacity: 0; }
+#messages li:hover .msg-del, .vc-msg:hover .msg-del { opacity: 0.8; }
+.msg-del:hover { color: var(--danger); opacity: 1; }
 .chat-img { display: block; margin-top: 6px; max-width: 260px; max-height: 200px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line); }
 .vc-msg .chat-img { max-width: 100%; }
 .image-viewer-img { max-width: 90vw; max-height: 90vh; margin: auto; border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6); }
 #imageModal { cursor: zoom-out; }
-#chatInput { flex: 1; padding: 11px 14px; border-radius: 8px; border: none; background: #383c46; color: var(--txt); font-size: 15px; }
-#chatForm button { padding: 0 18px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-weight: 600; }
+#chatInput { flex: 1; height: 40px; padding: 0 14px; border-radius: 8px; border: none; background: #383c46; color: var(--txt); font-size: 15px; }
 
 /* vista de voz */
 .voice-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -180,8 +191,9 @@ input, select, button { font-family: inherit; }
 .vc-msg { margin-bottom: 7px; word-break: break-word; line-height: 1.4; }
 .vc-msg b { color: #fff; }
 #voiceChatForm { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); align-items: center; }
-#voiceChatInput { flex: 1; padding: 9px 11px; border-radius: 8px; border: none; background: #383c46; color: var(--txt); font-size: 14px; }
-#voiceChatForm button { padding: 0 14px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-weight: 600; }
+#voiceChatInput { flex: 1; height: 38px; padding: 0 11px; border-radius: 8px; border: none; background: #383c46; color: var(--txt); font-size: 14px; }
+#voiceChatForm .attach-btn { height: 38px; width: 40px; font-size: 18px; }
+#voiceChatForm .send-btn { height: 38px; padding: 0 12px; }
 #voiceChatToggle { background: none; border: none; color: var(--txt-dim); font-size: 16px; padding: 4px 8px; border-radius: 6px; }
 #voiceChatToggle:hover { color: var(--txt); background: rgba(255,255,255,0.05); }
 .stage {

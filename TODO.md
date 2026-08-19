@@ -101,6 +101,12 @@ Decisões tomadas:
 - [x] **Envio de imagens no chat** (texto e chat da voz) — 📎 anexa imagem,
       converte para WebP ≤1280px, assina (texto+img) e envia; Trystero faz o
       chunking do payload; thumbnail no chat + visualizador em tela cheia
+- [x] **Anexo aguarda o "Enviar"** — imagem selecionada vira preview no compositor
+      (com ✕ para remover); só envia ao clicar (antes ia direto)
+- [x] **Excluir mensagens/imagens** — 🗑 nas próprias mensagens; marca deleted e
+      oculta localmente; broadcast 'del' assinado (verificado contra o autor);
+      quem receber depois oculta (deletedIds); cooperativo, não dissemina o apagado
+- [x] Tamanho dos botões do chat corrigido (📎/Enviar; regra genérica sobrescrevia)
 
 ## 💬 Mensagens diretas / conversas privadas
 - [x] DM 1:1 — sala derivada de hash(chaves ordenadas); botão 📨 no rail abre a
