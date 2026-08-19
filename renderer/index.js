@@ -1,6 +1,7 @@
 import './polyfill.js'; // deve vir ANTES do trystero
 import { joinRoom, selfId } from 'trystero/torrent';
 import * as store from './store.js';
+import * as identity from './identity.js';
 
 const APP_ID = 'webrtc-p2p-chat-demo';
 const SPEAKING_THRESHOLD = 12;
@@ -17,12 +18,12 @@ let viewKey = null; // canal em exibição ("spaceId:channelId")
 let textRoom = null;
 let textRoomKey = null;
 let sendChat = null;
-const textPeerNicks = {};
-const messagesByChannel = {}; // key -> [{from,text,sys}]
+const messagesByChannel = {}; // key -> [{from,text,sys,verified}]
 
 // voz (persiste enquanto navego em canais de texto)
 let voice = null; // { key, spaceId, channelId, name, room }
-let voiceParticipants = {}; // peerId('local') -> nick
+let voiceParticipants = {}; // peerId -> { pub, nick, verified }
+const textIdents = {}; // peerId -> { pub, nick, verified } (por sala de texto ativa)
 
 // mídia local
 let micStream = null;
@@ -45,7 +46,12 @@ const parseKey = (k) => ({ spaceId: k.split(':')[0], channelId: k.split(':')[1] 
 const getSpace = (id) => spaces.find((s) => s.id === id);
 const getChannel = (sid, cid) => getSpace(sid)?.channels.find((c) => c.id === cid);
 const myNick = () => store.getNick() || selfId.slice(0, 6);
-const nickOf = (pid) => (pid === 'local' ? myNick() : voiceParticipants[pid] || pid.slice(0, 6));
+// identidade dos participantes de voz
+const nickOf = (pid) =>
+  pid === 'local' ? myNick() : voiceParticipants[pid]?.nick || pid.slice(0, 6);
+const pubOf = (pid) => (pid === 'local' ? identity.pub() : voiceParticipants[pid]?.pub || '');
+const verifiedOf = (pid) => (pid === 'local' ? true : !!voiceParticipants[pid]?.verified);
+const colorKey = (pid) => pubOf(pid) || pid; // cor estável por chave pública
 const initialOf = (s) => ((s || '?').trim().charAt(0) || '?').toUpperCase();
 const hueOf = (s) => {
   let h = 0;
@@ -180,11 +186,21 @@ function voiceMemberEl(pid) {
   const av = document.createElement('div');
   av.className = 'avatar';
   av.textContent = initialOf(nickOf(pid));
-  av.style.background = `hsl(${hueOf(pid)} 55% 45%)`;
+  av.style.background = `hsl(${hueOf(colorKey(pid))} 55% 45%)`;
   const nm = document.createElement('span');
   nm.textContent = pid === 'local' ? `${nickOf(pid)} (você)` : nickOf(pid);
   d.append(av, nm);
+  if (verifiedOf(pid)) d.append(verifiedBadge(pid));
   return d;
+}
+
+// pequeno selo de identidade verificada, com o fingerprint no title
+function verifiedBadge(pid) {
+  const b = document.createElement('span');
+  b.className = 'verified';
+  b.textContent = '✓';
+  b.title = 'Identidade verificada · #' + identity.fingerprint(pubOf(pid));
+  return b;
 }
 
 // ========================================================================
@@ -220,23 +236,45 @@ function joinText(k) {
     return;
   }
   if (textRoom) textRoom.leave();
+  for (const p in textIdents) delete textIdents[p];
   textRoomKey = k;
   textRoom = joinRoom(
     { appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } },
     'text:' + k
   );
+
+  // handshake de identidade
+  const [sendIdent, getIdent] = textRoom.makeAction('ident');
+  const announce = async (target) => {
+    const sig = await identity.sign(identity.pub());
+    sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
+  };
+  getIdent(async (msg, pid) => {
+    const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
+    textIdents[pid] = { pub: msg.pub, nick: msg.nick, verified };
+  });
+  textRoom.onPeerJoin((pid) => announce(pid));
+
+  // chat assinado
   const [send, get] = textRoom.makeAction('chat');
-  sendChat = send;
-  get((msg, pid) => pushMsg(k, textPeerNicks[pid] || pid.slice(0, 6), msg));
-  const [sendNick, getNick] = textRoom.makeAction('nick');
-  textRoom.onPeerJoin(() => sendNick(myNick()));
-  getNick((name, pid) => (textPeerNicks[pid] = name));
+  sendChat = async (text) => {
+    const sig = await identity.sign(text);
+    send({ text, sig });
+  };
+  get(async (payload, pid) => {
+    const id = textIdents[pid];
+    const nick = id?.nick || pid.slice(0, 6);
+    const verified = id ? await identity.verify(id.pub, payload.sig, payload.text) : false;
+    pushMsg(k, nick, payload.text, false, verified);
+  });
+
   renderMessages(k);
 }
 
-function pushMsg(k, from, text, sys) {
-  (messagesByChannel[k] || (messagesByChannel[k] = [])).push({ from, text, sys });
-  if (k === textRoomKey && !textView.classList.contains('hidden')) appendMsgEl({ from, text, sys });
+function pushMsg(k, from, text, sys, verified) {
+  const m = { from, text, sys, verified };
+  (messagesByChannel[k] || (messagesByChannel[k] = [])).push(m);
+  if (k === textRoomKey && !textView.classList.contains('hidden')) appendMsgEl(m);
 }
 
 function renderMessages(k) {
@@ -244,12 +282,17 @@ function renderMessages(k) {
   (messagesByChannel[k] || []).forEach(appendMsgEl);
 }
 
-function appendMsgEl({ from, text, sys }) {
+function appendMsgEl({ from, text, sys, verified }) {
   const li = document.createElement('li');
-  if (sys) li.className = 'sys';
-  li.innerHTML = sys
-    ? escapeHtml(text)
-    : `<b>${escapeHtml(from)}:</b> ${escapeHtml(text)}`;
+  if (sys) {
+    li.className = 'sys';
+    li.textContent = text;
+  } else {
+    const badge = verified
+      ? '<span class="verified" title="assinatura verificada">✓</span> '
+      : '<span class="unverified" title="mensagem sem assinatura verificada">⚠</span> ';
+    li.innerHTML = `${badge}<b>${escapeHtml(from)}:</b> ${escapeHtml(text)}`;
+  }
   messages.append(li);
   messages.scrollTop = messages.scrollHeight;
 }
@@ -260,7 +303,7 @@ $('chatForm').onsubmit = (e) => {
   const text = input.value.trim();
   if (!text || !sendChat) return;
   sendChat(text);
-  pushMsg(textRoomKey, `${myNick()} (você)`, text);
+  pushMsg(textRoomKey, `${myNick()} (você)`, text, false, true);
   input.value = '';
 };
 
@@ -335,18 +378,22 @@ function leaveVoice() {
 }
 
 function setupVoiceRoom(room) {
-  const [sendNick, getNick] = room.makeAction('nick');
-  room.__sendNick = sendNick;
-  getNick((name, pid) => {
-    voiceParticipants[pid] = name;
+  const [sendIdent, getIdent] = room.makeAction('ident');
+  const announce = async (target) => {
+    const sig = await identity.sign(identity.pub());
+    sendIdent({ pub: identity.pub(), nick: myNick(), sig }, target);
+  };
+  getIdent(async (msg, pid) => {
+    const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
+    voiceParticipants[pid] = { pub: msg.pub, nick: msg.nick, verified };
     refreshTileLabels(pid);
     renderChannels();
   });
 
   room.onPeerJoin((pid) => {
     console.log('[voz] peer entrou:', pid);
-    voiceParticipants[pid] = voiceParticipants[pid] || pid.slice(0, 6);
-    sendNick(myNick());
+    voiceParticipants[pid] = voiceParticipants[pid] || { nick: pid.slice(0, 6), verified: false };
+    announce(pid);
     if (micStream) room.addStream(micStream, pid, { kind: 'mic' });
     if (camStream) room.addStream(camStream, pid, { kind: 'camera' });
     if (screenStream) room.addStream(screenStream, pid, { kind: 'screen' });
@@ -587,9 +634,10 @@ function refreshTileLabels(pid) {
   const t = tiles[pid];
   if (t && t.kind === 'participant') {
     const name = nickOf(pid);
-    t.lab.textContent = pid === 'local' ? `${name} (você)` : name;
+    const check = verifiedOf(pid) ? ' ✓' : '';
+    t.lab.textContent = (pid === 'local' ? `${name} (você)` : name) + check;
     t.avatar.textContent = initialOf(name);
-    t.avatar.style.background = `hsl(${hueOf(pid)} 55% 45%)`;
+    t.avatar.style.background = `hsl(${hueOf(colorKey(pid))} 55% 45%)`;
   }
   const st = tiles[pid + ':screen'];
   if (st) st.lab.textContent = `${nickOf(pid)} · tela`;
@@ -636,7 +684,7 @@ function renderStage() {
     stageAvatar.style.display = 'none';
   } else {
     stageAvatar.textContent = initialOf(nickOf(t.peerId));
-    stageAvatar.style.background = `hsl(${hueOf(t.peerId)} 55% 45%)`;
+    stageAvatar.style.background = `hsl(${hueOf(colorKey(t.peerId))} 55% 45%)`;
     stageVideo.style.display = 'none';
     stageAvatar.style.display = 'flex';
   }
@@ -985,9 +1033,10 @@ function escapeHtml(s) {
 }
 function renderMeBar() {
   $('meNick').textContent = myNick();
+  $('meNick').title = 'Sua identidade · #' + identity.fingerprint();
   const av = $('meAvatar');
   av.textContent = initialOf(myNick());
-  av.style.background = `hsl(${hueOf('local')} 55% 45%)`;
+  av.style.background = `hsl(${hueOf(identity.pub() || 'local')} 55% 45%)`;
 }
 
 // ========================================================================
@@ -1028,17 +1077,25 @@ function showNickGate() {
 const params = new URLSearchParams(location.search);
 if (params.get('nick')) store.setNick(params.get('nick'));
 
-if (store.getNick()) {
-  boot();
-  const jv = params.get('joinVoice');
-  if (jv) {
-    const { spaceId, channelId } = parseKey(jv);
-    const ch = getChannel(spaceId, channelId);
-    if (ch) {
-      selectSpace(spaceId);
-      joinVoice(spaceId, ch);
-    }
+(async () => {
+  try {
+    await identity.init(); // gera/carrega o keypair antes de tudo
+    console.log('[id] identidade #' + identity.fingerprint());
+  } catch (err) {
+    console.error('[id] falha ao iniciar identidade:', err);
   }
-} else {
-  showNickGate();
-}
+  if (store.getNick()) {
+    boot();
+    const jv = params.get('joinVoice');
+    if (jv) {
+      const { spaceId, channelId } = parseKey(jv);
+      const ch = getChannel(spaceId, channelId);
+      if (ch) {
+        selectSpace(spaceId);
+        joinVoice(spaceId, ch);
+      }
+    }
+  } else {
+    showNickGate();
+  }
+})();

@@ -36,11 +36,18 @@ Decisões já tomadas:
 - Presença em canal de voz só aparece para quem está conectado nele (M5)
 - Sem histórico persistente ainda (M4)
 
-## 🔑 Milestone 2 — Identidade criptográfica
-- [ ] Gerar keypair local na 1ª vez (guardar com segurança no userData)
-- [ ] Perfil = apelido + avatar atrelados à chave pública
-- [ ] Assinar mensagens; verificar assinatura no recebimento
-- [ ] Exibir identidade verificada (evitar spoofing de apelido)
+## ✅ Milestone 2 — Identidade criptográfica (CONCLUÍDO)
+- [x] Gerar keypair local na 1ª vez — ECDSA P-256, privada NÃO-EXTRAÍVEL no
+      IndexedDB (`identity.js`); persiste entre reinícios
+- [x] Perfil atrelado à chave pública: cor do avatar e fingerprint derivados do
+      `pub` (estáveis entre sessões)
+- [x] Handshake assinado por sala (voz e texto): prova posse da chave; impossível
+      forjar o `pubId` de outro
+- [x] Mensagens de texto assinadas e verificadas no recebimento
+- [x] Selos: ✓ identidade/assinatura verificada, ⚠ não verificada
+- [ ] (futuro) Avatar de imagem customizado atrelado à identidade
+- [ ] (futuro) Anti-replay com nonce por conexão no handshake
+- [ ] (futuro) Backup/exportação da identidade entre dispositivos
 
 ## 🛡️ Milestone 3 — Administração de servidores  ← DISCUTIR ANTES DE IMPLEMENTAR
 > Quem cria o servidor precisa ser admin. Provável: dono = keypair criadora.

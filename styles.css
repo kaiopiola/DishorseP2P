@@ -86,6 +86,12 @@ input, select, button { font-family: inherit; }
 .voice-member .avatar { width: 22px; height: 22px; font-size: 11px; }
 .voice-member.speaking { color: var(--green); }
 .voice-member.speaking .avatar { box-shadow: 0 0 0 2px var(--green); }
+.voice-member .verified { margin-left: auto; }
+
+/* selos de identidade / assinatura */
+.verified { color: var(--green); font-weight: 700; cursor: help; }
+.unverified { color: #eab308; cursor: help; }
+#messages li .verified, #messages li .unverified { font-size: 12px; }
 
 .voice-status {
   display: flex; align-items: center; justify-content: space-between;

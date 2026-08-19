@@ -18,8 +18,19 @@ servidores, persistência local-first/CRDT, presença e escala).
 - **Conteúdo**: canal de texto mostra o chat; canal de voz mostra o palco de vídeo.
   A **voz persiste** enquanto você navega pelos canais de texto (barra "Voz conectada").
 
-> Estado atual: identidade = apelido (keypair vem no M2); servidores/canais e
-> preferências ficam em `localStorage`; sem histórico persistente ainda (M4).
+> Estado atual: **identidade por keypair** (ECDSA P-256, chave privada
+> não-extraível no IndexedDB); servidores/canais e preferências em `localStorage`;
+> sem histórico persistente ainda (M4).
+
+## Identidade (M2)
+
+Na 1ª vez, o app gera um par de chaves **ECDSA P-256**. A chave privada é
+**não-extraível** e fica no IndexedDB (`identity.js`) — assina, mas não pode ser
+exportada por JS. A **chave pública** é a identidade estável do usuário; o apelido
+é só conteúdo por cima dela (dois usuários podem ter o mesmo apelido, mas nunca a
+mesma chave). Ao entrar numa sala (voz ou texto), cada peer envia um **handshake
+assinado** provando posse da chave — o selo **✓** indica identidade/assinatura
+verificada. As mensagens de texto também são assinadas e verificadas.
 
 > Trocar a estratégia de signaling é uma linha em `renderer/index.js`
 > (`trystero/torrent`, `trystero/nostr`, `trystero/mqtt`). O default é `torrent`
