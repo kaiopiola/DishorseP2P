@@ -122,9 +122,9 @@ Decisões tomadas:
       como poster borrado + "▶ assistir" no filmstrip (sem <video> ao vivo, não
       decodifica); só a tela em foco toca no palco. A própria tela abre sozinha.
       Poster = frame congelado ao sair de foco (canvas). Marca "no ar" na ativa.
-- [ ] (futuro) Reduzir também a BANDA das telas não assistidas: sinalizar ao
-      emissor "não estou assistindo" para ele pausar/baixar o envio (mesh não
-      reduz banda sozinho; hoje só o decode é evitado)
+- [x] Reduzir a BANDA das telas não assistidas: usando o sinal 'watch', o
+      emissor envia qualidade cheia só a quem assiste e reduz a ~30kbps/2fps para
+      os demais (RTCRtpSender.setParameters por peer). Economia real de upload.
 
 ## 💾 Milestone 4 — Persistência local-first (CRDT)
 - [ ] Histórico de texto por canal com CRDT (Yjs/Automerge) sobre data channel

@@ -612,6 +612,7 @@ function setupVoiceRoom(room, spaceId) {
     if (msg && msg.on) screenWatchers.add(pid);
     else screenWatchers.delete(pid);
     renderWatchers();
+    applyScreenBitrate(); // ajusta o envio conforme quem assiste
   });
 
   const announceMan = manifestSync(room, spaceId);
@@ -1355,23 +1356,43 @@ function bitrateFor(h) {
   if (h <= 1080) return 3_500_000;
   return 0;
 }
-// Aplica maxBitrate/maxFramerate nos senders de vídeo (limite real de banda).
+async function setSenderMax(sender, maxBitrate, maxFramerate) {
+  try {
+    const p = sender.getParameters();
+    if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+    p.encodings[0].maxBitrate = maxBitrate || undefined;
+    if (maxFramerate) p.encodings[0].maxFramerate = maxFramerate;
+    await sender.setParameters(p);
+  } catch (e) {}
+}
+// Bitrate/fps da CÂMERA (a tela é tratada por applyScreenBitrate).
 function applyEncodingParams() {
   if (!voice || !voice.room.getPeers) return;
   const max = bitrateFor(settings.maxHeight);
-  const peers = voice.room.getPeers();
-  Object.values(peers).forEach((pc) => {
+  const screenTrack = screenStream?.getVideoTracks()[0];
+  Object.values(voice.room.getPeers()).forEach((pc) => {
     if (!pc.getSenders) return;
-    pc.getSenders().forEach(async (sender) => {
+    pc.getSenders().forEach((sender) => {
       if (!sender.track || sender.track.kind !== 'video') return;
-      try {
-        const p = sender.getParameters();
-        if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = max || undefined;
-        if (settings.maxFps) p.encodings[0].maxFramerate = settings.maxFps;
-        await sender.setParameters(p);
-      } catch (e) {}
+      if (sender.track === screenTrack) return; // tela: applyScreenBitrate
+      setSenderMax(sender, max, settings.maxFps);
     });
+  });
+  applyScreenBitrate();
+}
+// Envia a tela em qualidade cheia só para quem está assistindo; para os demais,
+// reduz a um fio (economia real de upload quando ninguém está olhando).
+function applyScreenBitrate() {
+  if (!voice || !screenStream || !voice.room.getPeers) return;
+  const track = screenStream.getVideoTracks()[0];
+  if (!track) return;
+  const normal = bitrateFor(settings.maxHeight) || 3_000_000;
+  Object.entries(voice.room.getPeers()).forEach(([pid, pc]) => {
+    if (!pc.getSenders) return;
+    const sender = pc.getSenders().find((s) => s.track === track);
+    if (!sender) return;
+    const watching = screenWatchers.has(pid);
+    setSenderMax(sender, watching ? normal : 30_000, watching ? settings.maxFps : 2);
   });
 }
 // Aplica a nova qualidade às transmissões já ativas, sem reabrir.
