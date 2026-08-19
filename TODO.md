@@ -49,15 +49,48 @@ Decisões já tomadas:
 - [ ] (futuro) Anti-replay com nonce por conexão no handshake
 - [ ] (futuro) Backup/exportação da identidade entre dispositivos
 
-## 🛡️ Milestone 3 — Administração de servidores  ← DISCUTIR ANTES DE IMPLEMENTAR
-> Quem cria o servidor precisa ser admin. Provável: dono = keypair criadora.
-- [ ] Dono do servidor = chave pública de quem criou (no manifesto)
-- [ ] Papéis/permissões (admin, moderador, membro)
-- [ ] Ações administrativas assinadas (criar/remover canal, kick, ban)
-- [ ] Como propagar/validar mudanças no manifesto sem servidor central?
-      (manifesto assinado pelo dono; membros verificam a assinatura)
-- [ ] Transferência de propriedade / múltiplos admins
-- [ ] Revisar: e se o dono nunca mais aparecer? (co-admins, quórum?)
+## 🛡️ Milestone 3 — Administração de servidores (EM ANDAMENTO)
+Decisões tomadas:
+- **Autoridade**: SÓ O DONO edita o manifesto (mais simples, sem conflito).
+- **Aplicação**: cooperativa (clientes honestos respeitam; sem coerção cripto por ora).
+- **Começar por**: dono + id-hash + manifesto assinado.
+
+- [x] `spaceId` = hash(pubkey_do_dono + nonce) — id único atrelado ao dono
+- [x] Manifesto com `owner`, `nonce`, `version`, `sig` (assinado pelo dono)
+- [x] Verificar manifesto no recebimento (assinatura + id derivado do dono)
+- [x] Propagação P2P (gossip): adota maior versão válida assinada pelo dono
+- [x] Edição restrita ao dono (criar canal já gated; servidor público sem dono é local)
+- [x] Convite verificado (rejeita manifesto com assinatura inválida)
+- [ ] Remover/renomear canal e renomear servidor (dono) na UI
+- [ ] **Banir/remover usuários do servidor (só dono)** — `banned` já existe no
+      manifesto; falta a UI + esconder/recusar as chaves banidas (cooperativo)
+- [ ] Papéis (dono/admin/membro) — admins adicionais assinados pelo dono
+- [ ] (futuro) Transferência de propriedade
+- [ ] (futuro) Dono offline: co-admins / quórum
+> Servidor legado "Daggerfall" (sem dono) segue como espaço público local, sem
+> verificação de manifesto.
+
+## ✨ Polimento de UX (novo)
+- [ ] **Ícones de status na lista da call**, ao lado do nome (estilo Discord):
+      🔇 mudo, 📷 câmera ligada, 🖥️ transmitindo tela
+      > Câmera/tela: derivável da presença dos tiles do peer. Mudo: precisa o peer
+      > anunciar o estado (action 'state' com {muted, cam, screen}).
+
+## 👤 Perfil & mídia (novo)
+- [ ] **Avatar de imagem** personalizado, atrelado à identidade
+      > Converter para **WebP** e comprimir no envio (canvas.toBlob('image/webp', q));
+      > redimensionar (ex.: máx 256px) para manter leve. Propagar no handshake.
+- [ ] **Bio de perfil** até ~100 caracteres (exibir no perfil/hover)
+- [ ] **Envio de imagens no chat de texto**
+      > Também converter para WebP + comprimir/redimensionar antes de enviar pelo
+      > data channel; assinar como as mensagens de texto. Cuidar do tamanho (chunk
+      > se necessário) e de limites de payload do Trystero.
+
+## 💬 Mensagens diretas / conversas privadas (novo)
+- [ ] DM 1:1 entre dois usuários (sala derivada das duas chaves públicas)
+- [ ] Lista de conversas privadas separada dos servidores
+- [ ] Assinadas/verificadas como os canais (o transporte já é E2E via DTLS)
+- [ ] (futuro) grupos privados (DM em grupo)
 
 ## 💾 Milestone 4 — Persistência local-first (CRDT)
 - [ ] Histórico de texto por canal com CRDT (Yjs/Automerge) sobre data channel

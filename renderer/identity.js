@@ -76,6 +76,13 @@ export function pub() {
   return _pub;
 }
 
+// Hash curto (SHA-256 → base64url, 16 chars) para derivar ids estáveis, p.ex.
+// o id de um servidor a partir de hash(ownerPub + nonce).
+export async function hashId(str) {
+  const d = await crypto.subtle.digest('SHA-256', enc.encode(str));
+  return abToB64u(d).slice(0, 16);
+}
+
 // Fingerprint curto para exibição (não é a identidade inteira).
 export function fingerprint(pubB64 = _pub) {
   return (pubB64 || '').slice(0, 8);

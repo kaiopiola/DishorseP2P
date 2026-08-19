@@ -18,6 +18,7 @@ let viewKey = null; // canal em exibição ("spaceId:channelId")
 let textRoom = null;
 let textRoomKey = null;
 let sendChat = null;
+let textAnnounceMan = null; // broadcast do manifesto na sala de texto ativa
 const messagesByChannel = {}; // key -> [{from,text,sys,verified}]
 
 // voz (persiste enquanto navego em canais de texto)
@@ -130,10 +131,11 @@ function renderChannels() {
   const texts = sp.channels.filter((c) => c.type === 'text');
   const voices = sp.channels.filter((c) => c.type === 'voice');
 
-  channelList.appendChild(catLabel('Canais de texto', () => openChannelModal('text')));
+  const editable = store.canEdit(sp);
+  channelList.appendChild(catLabel('Canais de texto', editable ? () => openChannelModal('text') : null));
   texts.forEach((c) => channelList.appendChild(channelEl(sp.id, c)));
 
-  channelList.appendChild(catLabel('Canais de voz', () => openChannelModal('voice')));
+  channelList.appendChild(catLabel('Canais de voz', editable ? () => openChannelModal('voice') : null));
   voices.forEach((c) => {
     channelList.appendChild(channelEl(sp.id, c));
     if (voice && voice.key === key(sp.id, c.id)) {
@@ -152,11 +154,14 @@ function catLabel(text, onAdd) {
   d.className = 'cat-label';
   const span = document.createElement('span');
   span.textContent = text;
-  const b = document.createElement('button');
-  b.textContent = '+';
-  b.title = 'Criar canal';
-  b.onclick = onAdd;
-  d.append(span, b);
+  d.append(span);
+  if (onAdd) {
+    const b = document.createElement('button');
+    b.textContent = '+';
+    b.title = 'Criar canal';
+    b.onclick = onAdd;
+    d.append(b);
+  }
   return d;
 }
 
@@ -253,7 +258,11 @@ function joinText(k) {
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
     textIdents[pid] = { pub: msg.pub, nick: msg.nick, verified };
   });
-  textRoom.onPeerJoin((pid) => announce(pid));
+  textAnnounceMan = manifestSync(textRoom, parseKey(k).spaceId);
+  textRoom.onPeerJoin((pid) => {
+    announce(pid);
+    textAnnounceMan(pid);
+  });
 
   // chat assinado
   const [send, get] = textRoom.makeAction('chat');
@@ -345,7 +354,7 @@ async function joinVoice(spaceId, ch) {
     { appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } },
     'voice:' + k
   );
-  setupVoiceRoom(voice.room);
+  setupVoiceRoom(voice.room, spaceId);
   ensureParticipant('local');
   focusedKey = 'local';
   await applyMic(); // voz por padrão ao entrar
@@ -377,7 +386,7 @@ function leaveVoice() {
   }
 }
 
-function setupVoiceRoom(room) {
+function setupVoiceRoom(room, spaceId) {
   const [sendIdent, getIdent] = room.makeAction('ident');
   const announce = async (target) => {
     const sig = await identity.sign(identity.pub());
@@ -389,11 +398,14 @@ function setupVoiceRoom(room) {
     refreshTileLabels(pid);
     renderChannels();
   });
+  const announceMan = manifestSync(room, spaceId);
+  if (voice) voice.announceMan = announceMan;
 
   room.onPeerJoin((pid) => {
     console.log('[voz] peer entrou:', pid);
     voiceParticipants[pid] = voiceParticipants[pid] || { nick: pid.slice(0, 6), verified: false };
     announce(pid);
+    announceMan(pid);
     if (micStream) room.addStream(micStream, pid, { kind: 'mic' });
     if (camStream) room.addStream(camStream, pid, { kind: 'camera' });
     if (screenStream) room.addStream(screenStream, pid, { kind: 'screen' });
@@ -946,10 +958,10 @@ function closeModal(id) {
 }
 
 $('spaceCancel').onclick = () => closeModal('spaceModal');
-$('spaceCreate').onclick = () => {
+$('spaceCreate').onclick = async () => {
   const name = $('spaceNameInput').value.trim();
   if (!name) return;
-  const sp = store.createSpace(name, $('spaceIconInput').value.trim());
+  const sp = await store.createSpace(name, $('spaceIconInput').value.trim());
   spaces.push(sp);
   store.saveSpaces(spaces);
   $('spaceNameInput').value = '';
@@ -959,15 +971,18 @@ $('spaceCreate').onclick = () => {
 };
 
 $('inviteCancel').onclick = () => closeModal('inviteModal');
-$('inviteJoin').onclick = () => {
-  const sp = store.decodeInvite($('inviteInput').value);
+$('inviteJoin').onclick = async () => {
+  const sp = await store.decodeInvite($('inviteInput').value);
   if (!sp) {
-    $('inviteInput').classList.add('invalid');
+    $('inviteInput').classList.add('invalid'); // inválido ou assinatura adulterada
     return;
   }
-  if (!getSpace(sp.id)) {
+  const existing = getSpace(sp.id);
+  if (!existing) {
     spaces.push(sp);
     store.saveSpaces(spaces);
+  } else if ((sp.version || 1) > (existing.version || 1)) {
+    replaceSpace(sp); // convite mais novo atualiza o local
   }
   $('inviteInput').value = '';
   $('inviteInput').classList.remove('invalid');
@@ -984,20 +999,26 @@ function openChannelModal(type) {
   $('channelNameInput').focus();
 }
 $('channelCancel').onclick = () => closeModal('channelModal');
-$('channelCreate').onclick = () => {
+$('channelCreate').onclick = async () => {
   const name = $('channelNameInput').value.trim();
   if (!name) return;
   const type = document.querySelector('input[name="chType"]:checked').value;
   const sp = getSpace(currentSpaceId);
+  if (!store.canEdit(sp)) return; // só o dono edita servidores com dono
   sp.channels.push(store.createChannel(name, type));
+  if (store.isOwned(sp)) await store.bumpAndSign(sp); // reassina + versão nova
   store.saveSpaces(spaces);
+  broadcastManifest(sp.id); // propaga aos peers conectados
   $('channelNameInput').value = '';
   closeModal('channelModal');
   renderChannels();
 };
 
 $('btnSpaceMenu').onclick = () => {
-  $('spaceMenuTitle').textContent = getSpace(currentSpaceId).name;
+  const sp = getSpace(currentSpaceId);
+  const role = store.isOwner(sp) ? ' · você é o dono' : sp.owner ? ' · membro' : ' · público';
+  $('spaceMenuTitle').textContent = sp.name + role;
+  $('menuAddChannel').style.display = store.canEdit(sp) ? '' : 'none';
   $('inviteCopied').style.display = 'none';
   openModal('spaceMenuModal');
 };
@@ -1022,6 +1043,50 @@ $('menuLeaveSpace').onclick = () => {
   closeModal('spaceMenuModal');
   selectSpace(spaces[0].id);
 };
+
+// ========================================================================
+//  MANIFESTO DE SERVIDOR (gossip assinado — só servidores com dono)
+// ========================================================================
+function manifestSync(room, spaceId) {
+  const [sendMan, getMan] = room.makeAction('manifest');
+  getMan((incoming) => adoptManifest(incoming, spaceId));
+  return (target) => {
+    const s = getSpace(spaceId);
+    if (s && s.owner) sendMan(s, target); // sem target = broadcast
+  };
+}
+
+async function adoptManifest(incoming, spaceId) {
+  if (!incoming || incoming.id !== spaceId || !incoming.owner) return;
+  const cur = getSpace(spaceId);
+  if (cur) {
+    if (cur.owner && incoming.owner !== cur.owner) return; // dono diferente
+    if ((incoming.version || 1) <= (cur.version || 1)) return; // não é mais novo
+  }
+  if (!(await store.verifyManifest(incoming))) return; // assinatura inválida
+  replaceSpace(incoming);
+}
+
+function replaceSpace(sp) {
+  const i = spaces.findIndex((s) => s.id === sp.id);
+  if (i >= 0) spaces[i] = sp;
+  else spaces.push(sp);
+  store.saveSpaces(spaces);
+  renderRail();
+  if (currentSpaceId === sp.id) {
+    renderChannels();
+    const { spaceId, channelId } = parseKey(viewKey || ':');
+    if (spaceId === sp.id && !getChannel(spaceId, channelId)) {
+      const first = sp.channels.find((c) => c.type === 'text') || sp.channels[0];
+      if (first) selectChannel(sp.id, first.id);
+    }
+  }
+}
+
+function broadcastManifest(spaceId) {
+  if (voice && voice.spaceId === spaceId && voice.announceMan) voice.announceMan();
+  if (textRoomKey && parseKey(textRoomKey).spaceId === spaceId && textAnnounceMan) textAnnounceMan();
+}
 
 // ========================================================================
 //  UTIL

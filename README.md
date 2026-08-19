@@ -32,6 +32,21 @@ mesma chave). Ao entrar numa sala (voz ou texto), cada peer envia um **handshake
 assinado** provando posse da chave — o selo **✓** indica identidade/assinatura
 verificada. As mensagens de texto também são assinadas e verificadas.
 
+## Administração de servidores (M3 — em andamento)
+
+Servidores criados pelo usuário têm um **dono criptográfico**: o `spaceId` é
+`hash(chave_pública_do_dono + nonce)` (único e atrelado ao dono), e o manifesto
+(nome, ícone, canais) é **assinado** pelo dono e **versionado**. Ao entrar num
+canal, os peers trocam o manifesto por gossip P2P e adotam a **maior versão válida
+assinada pelo dono** — assim novos canais propagam sem servidor central.
+
+- **Só o dono edita** (decisão de projeto): criar canais fica restrito a ele; peers
+  apenas recebem e verificam. O servidor público **Daggerfall** (sem dono) é um
+  espaço legado editável localmente, sem verificação.
+- **Convites são verificados**: um manifesto com assinatura adulterada é rejeitado.
+- **Moderação é cooperativa**: banir (a implementar) significa que clientes honestos
+  escondem/recusam a chave banida — sem coerção criptográfica por ora.
+
 > Trocar a estratégia de signaling é uma linha em `renderer/index.js`
 > (`trystero/torrent`, `trystero/nostr`, `trystero/mqtt`). O default é `torrent`
 > porque os relays **nostr** rejeitam eventos quando o relógio da máquina está
