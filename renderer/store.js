@@ -41,7 +41,7 @@ export function saveSpaces(spaces) {
 }
 
 // Cria um servidor "owned": id derivado do dono, manifesto assinado.
-export async function createSpace(name, icon) {
+export async function createSpace(name, icon, image) {
   const owner = identity.pub();
   const nonce = genId('n');
   const id = await identity.hashId(owner + ':' + nonce);
@@ -52,6 +52,7 @@ export async function createSpace(name, icon) {
     version: 1,
     name: name || 'Novo servidor',
     icon: icon || (name ? name.trim().charAt(0).toUpperCase() : '#'),
+    image: image || '', // foto de perfil do servidor (WebP), opcional
     banned: [], // chaves públicas banidas (cooperativo)
     channels: [
       { id: genId('c'), name: 'geral', type: 'text' },
@@ -76,6 +77,7 @@ function canon(sp) {
     version: sp.version,
     name: sp.name,
     icon: sp.icon,
+    image: sp.image || '',
     banned: sp.banned || [],
     channels: sp.channels,
   });

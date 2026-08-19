@@ -146,7 +146,7 @@ function renderRail() {
   spaces.forEach((sp) => {
     const b = document.createElement('button');
     b.className = 'server-icon' + (mode === 'server' && sp.id === currentSpaceId ? ' active' : '');
-    b.textContent = sp.icon || initialOf(sp.name);
+    applyServerIcon(b, sp);
     b.title = sp.name;
     b.onclick = () => selectSpace(sp.id);
     rail.appendChild(b);
@@ -158,7 +158,7 @@ function renderRail() {
   add.className = 'server-icon add';
   add.textContent = '+';
   add.title = 'Criar servidor';
-  add.onclick = () => openModal('spaceModal');
+  add.onclick = openSpaceCreate;
   rail.appendChild(add);
   const inv = document.createElement('button');
   inv.className = 'server-icon add';
@@ -1765,16 +1765,6 @@ async function removeChannel(spaceId, ch) {
     else showEmpty();
   }
 }
-async function renameSpace() {
-  const sp = getSpace(currentSpaceId);
-  if (!store.canEdit(sp)) return;
-  const name = await promptText('Renomear servidor', sp.name);
-  if (!name) return;
-  sp.name = name;
-  await commitManifest(sp);
-  renderRail();
-  renderChannels();
-}
 function openBanned() {
   const sp = getSpace(currentSpaceId);
   const list = $('bannedList');
@@ -1804,18 +1794,92 @@ async function unbanUser(pub) {
   openBanned();
 }
 
+let editingSpaceId = null;
+let pendingSpaceImage = null;
+
+function renderSpacePreview() {
+  const el = $('spacePreview');
+  if (pendingSpaceImage) {
+    el.style.backgroundImage = `url(${pendingSpaceImage})`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.style.backgroundColor = 'transparent';
+    el.textContent = '';
+    $('spacePhotoRemove').style.display = '';
+  } else {
+    el.style.backgroundImage = 'none';
+    el.style.backgroundColor = '#444';
+    el.textContent = $('spaceIconInput').value.trim() || initialOf($('spaceNameInput').value || '#');
+    $('spacePhotoRemove').style.display = 'none';
+  }
+}
+function openSpaceCreate() {
+  editingSpaceId = null;
+  pendingSpaceImage = null;
+  $('spaceModalTitle').textContent = 'Novo servidor';
+  $('spaceCreate').textContent = 'Criar';
+  $('spaceNameInput').value = '';
+  $('spaceIconInput').value = '';
+  renderSpacePreview();
+  openModal('spaceModal');
+  $('spaceNameInput').focus();
+}
+function openSpaceEdit(sp) {
+  if (!sp || !store.canEdit(sp)) return;
+  editingSpaceId = sp.id;
+  pendingSpaceImage = sp.image || null;
+  $('spaceModalTitle').textContent = 'Editar servidor';
+  $('spaceCreate').textContent = 'Salvar';
+  $('spaceNameInput').value = sp.name;
+  $('spaceIconInput').value = sp.icon || '';
+  renderSpacePreview();
+  openModal('spaceModal');
+}
+$('spaceIconInput').oninput = () => {
+  if (!pendingSpaceImage) renderSpacePreview();
+};
+$('spaceNameInput').oninput = () => {
+  if (!pendingSpaceImage) renderSpacePreview();
+};
+$('spacePhotoBtn').onclick = () => $('spacePhotoInput').click();
+$('spacePhotoInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    pendingSpaceImage = await imageFileToAvatar(file);
+    renderSpacePreview();
+  } catch (err) {
+    pushSys('foto: ' + err.message);
+  }
+  e.target.value = '';
+};
+$('spacePhotoRemove').onclick = () => {
+  pendingSpaceImage = null;
+  renderSpacePreview();
+};
 $('spaceCancel').onclick = () => closeModal('spaceModal');
 $('spaceCreate').onclick = async () => {
   const name = $('spaceNameInput').value.trim();
   if (!name) return;
-  const sp = await store.createSpace(name, $('spaceIconInput').value.trim());
-  spaces.push(sp);
-  store.saveSpaces(spaces);
-  startDiscovery(sp);
-  $('spaceNameInput').value = '';
-  $('spaceIconInput').value = '';
-  closeModal('spaceModal');
-  selectSpace(sp.id);
+  const icon = $('spaceIconInput').value.trim();
+  if (editingSpaceId) {
+    const sp = getSpace(editingSpaceId);
+    if (!sp || !store.canEdit(sp)) return;
+    sp.name = name;
+    sp.icon = icon;
+    sp.image = pendingSpaceImage || '';
+    await commitManifest(sp);
+    closeModal('spaceModal');
+    renderRail();
+    renderChannels();
+  } else {
+    const sp = await store.createSpace(name, icon, pendingSpaceImage || '');
+    spaces.push(sp);
+    store.saveSpaces(spaces);
+    startDiscovery(sp);
+    closeModal('spaceModal');
+    selectSpace(sp.id);
+  }
 };
 
 $('inviteCancel').onclick = () => closeModal('inviteModal');
@@ -1883,7 +1947,7 @@ $('menuAddChannel').onclick = () => {
 };
 $('menuRenameSpace').onclick = () => {
   closeModal('spaceMenuModal');
-  renameSpace();
+  openSpaceEdit(getSpace(currentSpaceId));
 };
 $('menuBanned').onclick = () => {
   closeModal('spaceMenuModal');
@@ -1974,7 +2038,7 @@ $('inviteCopy').onclick = async () => {
   }
 };
 $('inviteShareClose').onclick = () => closeModal('inviteShareModal');
-$('welcomeCreate').onclick = () => openModal('spaceModal');
+$('welcomeCreate').onclick = openSpaceCreate;
 $('welcomeJoin').onclick = () => openModal('inviteModal');
 $('menuLeaveSpace').onclick = () => {
   if (spaces.length <= 1) return; // não sair do último
@@ -2143,6 +2207,19 @@ function applyAvatarEl(el, pid) {
     el.textContent = initialOf(nickOf(pid));
   }
 }
+// aplica a foto (se houver) ou o emoji/letra no botão de servidor
+function applyServerIcon(el, sp) {
+  if (sp.image) {
+    el.style.backgroundImage = `url(${sp.image})`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.textContent = '';
+  } else {
+    el.style.backgroundImage = 'none';
+    el.textContent = sp.icon || initialOf(sp.name);
+  }
+}
+
 // converte um arquivo de imagem em WebP quadrado (avatar leve)
 async function imageFileToAvatar(file) {
   const bm = await createImageBitmap(file);

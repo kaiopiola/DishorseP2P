@@ -67,6 +67,9 @@ Decisões tomadas:
       manifesto assinado). App inicia VAZIO com tela de boas-vindas (sem Daggerfall)
 - [x] Remover/renomear canal e renomear servidor (dono) na UI — hover ✎/✕ nos
       canais + menu do servidor; reassina e propaga
+- [x] **Foto de perfil do servidor** (ou emoji), editável só pelo dono — na
+      criação e na edição; foto vira WebP e entra no manifesto assinado (`image`);
+      o rail mostra a foto ou o emoji/letra
 - [x] **Banir/remover usuários do servidor (só dono)** — botão ✕ na lista da call;
       adiciona a chave a `banned`, reassina e propaga; clientes honestos escondem os
       banidos e o próprio banido sai do servidor ao receber o manifesto (cooperativo)

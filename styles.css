@@ -285,6 +285,11 @@ input[type="text"], input:not([type]), input[type="password"], select {
 .setting.checks input { width: auto; }
 .setting.two-col { display: flex; gap: 8px; }
 .setting.two-col input { flex: 1; }
+.space-icon-edit { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.space-icon-edit .avatar.big { width: 84px; height: 84px; font-size: 34px; flex: 0 0 auto; }
+.space-icon-actions { display: flex; flex-direction: column; gap: 8px; }
+button.secondary { background: #383c46; border: 1px solid #3a3f4a; color: var(--txt); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+button.secondary:hover { background: #434855; }
 .radio-row { display: flex; gap: 16px; }
 .radio-row label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
 .meter { height: 12px; background: #0d0f13; border: 1px solid #333; border-radius: 6px; overflow: hidden; }

@@ -131,16 +131,24 @@
       </div>
     </div>
 
-    <!-- criar servidor -->
+    <!-- criar / editar servidor -->
     <div id="spaceModal" class="modal hidden">
       <div class="modal-content">
-        <h2>Novo servidor</h2>
+        <h2 id="spaceModalTitle">Novo servidor</h2>
+        <div class="space-icon-edit">
+          <div class="avatar big" id="spacePreview"></div>
+          <div class="space-icon-actions">
+            <input type="file" id="spacePhotoInput" accept="image/*" style="display: none" />
+            <button id="spacePhotoBtn" class="secondary">Enviar foto</button>
+            <button id="spacePhotoRemove" class="secondary" style="display: none">Remover foto</button>
+          </div>
+        </div>
         <div class="setting">
           <label for="spaceNameInput">Nome</label>
           <input id="spaceNameInput" placeholder="Meu servidor" maxlength="30" autocomplete="off" />
         </div>
         <div class="setting">
-          <label for="spaceIconInput">Ícone (emoji ou letra)</label>
+          <label for="spaceIconInput">Emoji ou letra <span class="hint">(usado se não houver foto)</span></label>
           <input id="spaceIconInput" placeholder="🎮" maxlength="2" autocomplete="off" />
         </div>
         <div class="settings-actions">
@@ -210,7 +218,7 @@
         <h2 id="spaceMenuTitle">Servidor</h2>
         <div class="settings-actions col">
           <button id="menuAddChannel">➕ Criar canal</button>
-          <button id="menuRenameSpace">✎ Renomear servidor</button>
+          <button id="menuRenameSpace">✎ Editar servidor (nome/foto)</button>
           <button id="menuBanned">🚫 Gerenciar banidos</button>
           <button id="menuCopyInvite">🔗 Copiar convite</button>
           <button id="menuLeaveSpace" class="danger">🚪 Sair do servidor</button>
