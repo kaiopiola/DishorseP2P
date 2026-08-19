@@ -11,8 +11,9 @@ const $ = (id) => document.getElementById(id);
 
 // ---- Estado -------------------------------------------------------------
 let spaces = store.loadSpaces();
-let currentSpaceId = spaces[0].id;
+let currentSpaceId = spaces[0]?.id || null;
 let viewKey = null; // canal em exibição ("spaceId:channelId")
+const discoveryRooms = {}; // id -> sala 'srv:<id>' (serve o manifesto por descoberta)
 let mode = 'server'; // 'server' | 'dm'
 let currentDM = null; // { pub, nick }
 let dmList = [];
@@ -246,7 +247,12 @@ function renderDMList() {
 function renderChannels() {
   if (mode === 'dm') return renderDMList();
   const sp = getSpace(currentSpaceId);
-  if (!sp) return;
+  if (!sp) {
+    spaceNameEl.textContent = 'Nenhum servidor';
+    $('btnSpaceMenu').style.display = 'none';
+    channelList.innerHTML = '';
+    return;
+  }
   $('btnSpaceMenu').style.display = '';
   spaceNameEl.textContent = sp.name;
   channelList.innerHTML = '';
@@ -399,6 +405,7 @@ function showEmpty() {
   emptyView.classList.remove('hidden');
   textView.classList.add('hidden');
   voiceView.classList.add('hidden');
+  $('welcomeView').classList.add('hidden');
 }
 
 // ---- Canal de texto -----------------------------------------------------
@@ -406,6 +413,7 @@ function showTextView(spaceId, ch) {
   textView.classList.remove('hidden');
   voiceView.classList.add('hidden');
   emptyView.classList.add('hidden');
+  $('welcomeView').classList.add('hidden');
   $('textTitle').textContent = ch.name;
   joinText(key(spaceId, ch.id));
 }
@@ -573,6 +581,7 @@ function showVoiceView(spaceId, ch) {
   voiceView.classList.remove('hidden');
   textView.classList.add('hidden');
   emptyView.classList.add('hidden');
+  $('welcomeView').classList.add('hidden');
   $('voiceTitle').textContent = ch.name;
   const k = key(spaceId, ch.id);
   const here = voice && voice.key === k;
@@ -1802,6 +1811,7 @@ $('spaceCreate').onclick = async () => {
   const sp = await store.createSpace(name, $('spaceIconInput').value.trim());
   spaces.push(sp);
   store.saveSpaces(spaces);
+  startDiscovery(sp);
   $('spaceNameInput').value = '';
   $('spaceIconInput').value = '';
   closeModal('spaceModal');
@@ -1810,24 +1820,28 @@ $('spaceCreate').onclick = async () => {
 
 $('inviteCancel').onclick = () => closeModal('inviteModal');
 $('inviteJoin').onclick = async () => {
-  const sp = await store.decodeInvite($('inviteInput').value);
-  if (!sp) {
-    $('inviteInput').classList.add('invalid'); // inválido ou assinatura adulterada
-    return;
+  const code = $('inviteInput').value.trim();
+  if (!code) return;
+  const btn = $('inviteJoin');
+  btn.disabled = true;
+  btn.textContent = 'Procurando...';
+  $('inviteError').style.display = 'none';
+  const res = await joinByInvite(code);
+  btn.disabled = false;
+  btn.textContent = 'Entrar';
+  if (res === 'ok' || res === 'have') {
+    $('inviteInput').value = '';
+    $('inviteInput').classList.remove('invalid');
+    closeModal('inviteModal');
+  } else {
+    $('inviteInput').classList.add('invalid');
+    $('inviteError').style.display = '';
   }
-  const existing = getSpace(sp.id);
-  if (!existing) {
-    spaces.push(sp);
-    store.saveSpaces(spaces);
-  } else if ((sp.version || 1) > (existing.version || 1)) {
-    replaceSpace(sp); // convite mais novo atualiza o local
-  }
-  $('inviteInput').value = '';
-  $('inviteInput').classList.remove('invalid');
-  closeModal('inviteModal');
-  selectSpace(sp.id);
 };
-$('inviteInput').oninput = () => $('inviteInput').classList.remove('invalid');
+$('inviteInput').oninput = () => {
+  $('inviteInput').classList.remove('invalid');
+  $('inviteError').style.display = 'none';
+};
 
 let pendingChannelType = 'text';
 function openChannelModal(type) {
@@ -1944,15 +1958,24 @@ $('profileSave').onclick = () => {
   renderStage();
   broadcastIdentity(); // peers recebem o novo perfil
 };
-$('menuCopyInvite').onclick = async () => {
-  const code = store.encodeInvite(getSpace(currentSpaceId));
+$('menuCopyInvite').onclick = () => {
+  closeModal('spaceMenuModal');
+  const sp = getSpace(currentSpaceId);
+  $('inviteCode').value = store.encodeInvite(sp);
+  $('inviteCopiedMsg').style.display = 'none';
+  openModal('inviteShareModal');
+};
+$('inviteCopy').onclick = async () => {
   try {
-    await navigator.clipboard.writeText(code);
-    $('inviteCopied').style.display = '';
+    await navigator.clipboard.writeText($('inviteCode').value);
+    $('inviteCopiedMsg').style.display = '';
   } catch (e) {
-    pushSys('convite: ' + code);
+    $('inviteCode').select();
   }
 };
+$('inviteShareClose').onclick = () => closeModal('inviteShareModal');
+$('welcomeCreate').onclick = () => openModal('spaceModal');
+$('welcomeJoin').onclick = () => openModal('inviteModal');
 $('menuLeaveSpace').onclick = () => {
   if (spaces.length <= 1) return; // não sair do último
   spaces = spaces.filter((s) => s.id !== currentSpaceId);
@@ -1998,6 +2021,7 @@ function replaceSpace(sp) {
   if (i >= 0) spaces[i] = sp;
   else spaces.push(sp);
   store.saveSpaces(spaces);
+  startDiscovery(sp);
   enforceBans();
   renderRail();
   if (currentSpaceId === sp.id) {
@@ -2013,6 +2037,73 @@ function replaceSpace(sp) {
 function broadcastManifest(spaceId) {
   if (voice && voice.spaceId === spaceId && voice.announceMan) voice.announceMan();
   if (textRoomKey && parseKey(textRoomKey).spaceId === spaceId && textAnnounceMan) textAnnounceMan();
+  const dr = discoveryRooms[spaceId];
+  if (dr && dr.__sendMan) {
+    const s = getSpace(spaceId);
+    if (s && s.owner) dr.__sendMan(s);
+  }
+}
+
+// Sala de descoberta por servidor ('srv:<id>'): serve o manifesto assinado a
+// quem entra só com o id (convite curto). Mantida enquanto o app está aberto.
+function startDiscovery(sp) {
+  if (!sp || !sp.owner || discoveryRooms[sp.id]) return;
+  const room = joinRoom(
+    { appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } },
+    'srv:' + sp.id
+  );
+  const [sendMan, getMan] = room.makeAction('manifest');
+  room.__sendMan = sendMan;
+  getMan((incoming) => adoptManifest(incoming, sp.id));
+  room.onPeerJoin(() => {
+    const s = getSpace(sp.id);
+    if (s && s.owner) sendMan(s);
+  });
+  discoveryRooms[sp.id] = room;
+}
+function startAllDiscovery() {
+  spaces.forEach((sp) => sp.owner && startDiscovery(sp));
+}
+
+// Entra num servidor pelo id curto: junta na sala de descoberta e adota o
+// manifesto assinado que um membro online enviar.
+function joinByInvite(code) {
+  code = (code || '').trim();
+  if (!code) return Promise.resolve('empty');
+  if (getSpace(code)) {
+    selectSpace(code);
+    return Promise.resolve('have');
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    const room = joinRoom(
+      { appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } },
+      'srv:' + code
+    );
+    const [sendMan, getMan] = room.makeAction('manifest');
+    room.__sendMan = sendMan;
+    getMan(async (incoming) => {
+      if (done || !incoming || incoming.id !== code || !incoming.owner) return;
+      if (!(await store.verifyManifest(incoming))) return;
+      done = true;
+      discoveryRooms[code] = room; // mantém como sala de descoberta
+      room.onPeerJoin(() => {
+        const s = getSpace(code);
+        if (s && s.owner) sendMan(s);
+      });
+      replaceSpace(incoming);
+      selectSpace(code);
+      resolve('ok');
+    });
+    setTimeout(() => {
+      if (!done) {
+        try {
+          room.leave();
+        } catch (e) {}
+        resolve('notfound');
+      }
+    }, 12000);
+  });
 }
 
 // ========================================================================
@@ -2108,11 +2199,26 @@ function renderMeBar() {
 function boot() {
   renderMeBar();
   renderRail();
+  startAllDiscovery(); // mantém os servidores "descobríveis" por id
+  if (!spaces.length) {
+    mode = 'server';
+    renderChannels();
+    showWelcome();
+    return;
+  }
+  currentSpaceId = spaces[0].id;
   renderChannels();
   const sp = getSpace(currentSpaceId);
   const first = sp.channels.find((c) => c.type === 'text') || sp.channels[0];
   if (first) selectChannel(currentSpaceId, first.id);
   else showEmpty();
+}
+
+function showWelcome() {
+  $('welcomeView').classList.remove('hidden');
+  textView.classList.add('hidden');
+  voiceView.classList.add('hidden');
+  emptyView.classList.add('hidden');
 }
 
 function showNickGate() {
@@ -2151,6 +2257,18 @@ if (params.get('nick')) store.setNick(params.get('nick'));
   micEnabled = !settings.micMuted;
   deafened = settings.deafened;
   updateMeControls();
+  // servidor de teste fixo (público) só quando pedido via env, para 2 instâncias
+  if (params.get('seed') && !getSpace('testroom')) {
+    spaces.push({
+      id: 'testroom',
+      name: 'Test',
+      icon: '🧪',
+      channels: [
+        { id: 'geral', name: 'geral', type: 'text' },
+        { id: 'voz', name: 'Voz', type: 'voice' },
+      ],
+    });
+  }
   if (store.getNick()) {
     boot();
     const jv = params.get('joinVoice');

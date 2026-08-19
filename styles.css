@@ -250,6 +250,26 @@ input, select, button { font-family: inherit; }
 
 .empty-view { flex: 1; display: flex; align-items: center; justify-content: center; }
 
+/* boas-vindas */
+.welcome-view { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.welcome-view.hidden { display: none; }
+.welcome { text-align: center; max-width: 460px; }
+.welcome-logo { font-size: 64px; margin-bottom: 8px; }
+.welcome h1 { margin: 0 0 12px; font-size: 26px; }
+.welcome p { color: var(--txt-dim); font-size: 15px; margin: 6px 0; }
+.welcome-actions { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
+.welcome-actions button { padding: 12px 20px; border-radius: 8px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; }
+#welcomeCreate { background: var(--green); color: #fff; }
+#welcomeCreate:hover { background: #16a34a; }
+#welcomeJoin { background: var(--accent); color: #fff; }
+#welcomeJoin:hover { background: #4752c4; }
+
+/* compartilhar convite */
+.invite-code-row { display: flex; gap: 8px; margin: 4px 0; }
+.invite-code-row input { flex: 1; font-family: monospace; font-size: 15px; letter-spacing: 0.5px; }
+.invite-code-row button { padding: 0 16px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+.invite-code-row button:hover { background: #4752c4; }
+
 /* ---- modais ---- */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 50; }
 .modal.hidden { display: none; }

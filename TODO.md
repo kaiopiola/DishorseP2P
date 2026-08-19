@@ -61,6 +61,10 @@ Decisões tomadas:
 - [x] Propagação P2P (gossip): adota maior versão válida assinada pelo dono
 - [x] Edição restrita ao dono (criar canal já gated; servidor público sem dono é local)
 - [x] Convite verificado (rejeita manifesto com assinatura inválida)
+- [x] **Convite curto = id do servidor** (ex.: D5lgLLW4uPFXs-5w) em vez do
+      manifesto base64 gigante; modal com botão Copiar; entrar por id resolve o
+      manifesto via sala de descoberta 'srv:<id>' (um membro online serve o
+      manifesto assinado). App inicia VAZIO com tela de boas-vindas (sem Daggerfall)
 - [x] Remover/renomear canal e renomear servidor (dono) na UI — hover ✎/✕ nos
       canais + menu do servidor; reassina e propaga
 - [x] **Banir/remover usuários do servidor (só dono)** — botão ✕ na lista da call;

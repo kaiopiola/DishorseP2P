@@ -27,29 +27,13 @@ export function setNick(nick) {
 }
 
 // ---- Servidores / canais ------------------------------------------------
-function defaultSpaces() {
-  return [
-    {
-      id: 'daggerfall',
-      name: 'Daggerfall',
-      icon: '🗡️',
-      channels: [
-        { id: 'geral', name: 'geral', type: 'text' },
-        { id: 'random', name: 'random', type: 'text' },
-        { id: 'voz', name: 'Sala de Voz', type: 'voice' },
-      ],
-    },
-  ];
-}
-
+// App inicia VAZIO (sem servidor-semente). O usuário cria (+) ou entra por convite.
 export function loadSpaces() {
   try {
     const raw = JSON.parse(localStorage.getItem(SPACES_KEY));
-    if (Array.isArray(raw) && raw.length) return raw;
+    if (Array.isArray(raw)) return raw;
   } catch (e) {}
-  const seed = defaultSpaces();
-  saveSpaces(seed);
-  return seed;
+  return [];
 }
 
 export function saveSpaces(spaces) {
@@ -133,35 +117,8 @@ export function channelRoomId(spaceId, channelId) {
 }
 
 // ---- Convites (compartilhar servidor) -----------------------------------
-// Um convite carrega o manifesto completo (inclui owner/nonce/version/sig).
+// O convite é o próprio id curto do servidor (ex.: "D5lgLLW4uPFXs-5w"). Quem
+// entra usa esse id para descobrir o manifesto assinado via rede (sala 'srv:<id>').
 export function encodeInvite(space) {
-  const json = JSON.stringify({
-    id: space.id,
-    owner: space.owner,
-    nonce: space.nonce,
-    version: space.version,
-    name: space.name,
-    icon: space.icon,
-    banned: space.banned || [],
-    channels: space.channels,
-    sig: space.sig,
-  });
-  return btoa(unescape(encodeURIComponent(json)));
-}
-
-// Decodifica e, para servidores com dono, verifica a assinatura do manifesto.
-export async function decodeInvite(code) {
-  let space;
-  try {
-    const json = decodeURIComponent(escape(atob(code.trim())));
-    space = JSON.parse(json);
-  } catch (e) {
-    return null;
-  }
-  if (!space || !space.id || !Array.isArray(space.channels)) return null;
-  if (space.owner) {
-    const ok = await verifyManifest(space);
-    if (!ok) return null; // manifesto adulterado
-  }
-  return space;
+  return space.id;
 }

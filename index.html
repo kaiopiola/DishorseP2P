@@ -102,6 +102,20 @@
         <section class="empty-view" id="emptyView">
           <div class="placeholder">Selecione um canal</div>
         </section>
+
+        <!-- Boas-vindas (app sem servidores) -->
+        <section class="welcome-view hidden" id="welcomeView">
+          <div class="welcome">
+            <div class="welcome-logo">💬</div>
+            <h1>Bem-vindo ao P2P Chat</h1>
+            <p>Voz, vídeo e texto totalmente descentralizados — sem servidor central.</p>
+            <p>Crie um servidor ou entre em um pelo código de convite.</p>
+            <div class="welcome-actions">
+              <button id="welcomeCreate">➕ Criar servidor</button>
+              <button id="welcomeJoin">🔗 Entrar por convite</button>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -140,14 +154,31 @@
     <div id="inviteModal" class="modal hidden">
       <div class="modal-content">
         <h2>Entrar em um servidor</h2>
-        <p class="hint">Cole o código de convite que alguém compartilhou.</p>
+        <p class="hint">Cole o código do servidor que alguém compartilhou.</p>
         <div class="setting">
-          <input id="inviteInput" placeholder="código de convite" autocomplete="off" />
+          <input id="inviteInput" placeholder="código do servidor (ex.: D5lgLLW4uPFXs-5w)" autocomplete="off" />
         </div>
+        <p class="hint" id="inviteError" style="display: none; color: #ef4444">
+          Servidor não encontrado — é preciso que alguém desse servidor esteja online.
+        </p>
         <div class="settings-actions">
           <button id="inviteJoin">Entrar</button>
           <button id="inviteCancel">Cancelar</button>
         </div>
+      </div>
+    </div>
+
+    <!-- compartilhar convite (id curto + copiar) -->
+    <div id="inviteShareModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Convidar para o servidor</h2>
+        <p class="hint">Compartilhe este código. Quem tiver entra pelo 🔗 (precisa de alguém do servidor online para descobrir o servidor).</p>
+        <div class="invite-code-row">
+          <input id="inviteCode" readonly />
+          <button id="inviteCopy">Copiar</button>
+        </div>
+        <p class="hint" id="inviteCopiedMsg" style="display: none; color: #22c55e">Copiado! ✔</p>
+        <button id="inviteShareClose" style="width: 100%; margin-top: 10px">Fechar</button>
       </div>
     </div>
 

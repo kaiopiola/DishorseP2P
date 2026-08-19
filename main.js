@@ -105,6 +105,7 @@ function createWindow() {
   const parts = [];
   if (process.env.TEST_NICK) parts.push(`nick=${encodeURIComponent(process.env.TEST_NICK)}`);
   if (process.env.TEST_VOICE) parts.push(`joinVoice=${encodeURIComponent(process.env.TEST_VOICE)}`);
+  if (process.env.TEST_SEED) parts.push('seed=1');
   if (parts.length) win.loadFile('index.html', { search: parts.join('&') });
   else win.loadFile('index.html');
 }
