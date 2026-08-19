@@ -93,12 +93,12 @@ Decisões tomadas:
 - [ ] Assinadas/verificadas como os canais (o transporte já é E2E via DTLS)
 - [ ] (futuro) grupos privados (DM em grupo)
 
-## 🎚️ Qualidade & performance de transmissão (novo)
-- [ ] **Seleção de qualidade** (resolução) e **limite de FPS** por transmissão
-      (câmera/tela), para o usuário não forçar sempre o máximo
-      > Aplicar via constraints (width/height/frameRate) no getUserMedia/
-      > getDisplayMedia E via RTCRtpSender.setParameters (maxBitrate/maxFramerate/
-      > scaleResolutionDownBy). Guardar preferência nas configurações.
+## 🎚️ Qualidade & performance de transmissão
+- [x] **Seleção de qualidade** (resolução máx.) e **limite de FPS** nas
+      configurações; aplicado a câmera e tela via constraints de captura E via
+      RTCRtpSender.setParameters (maxBitrate/maxFramerate). Default: 720p/30fps.
+      Muda ao vivo (applyConstraints) sem reabrir a transmissão.
+- [ ] Perfis rápidos (ex.: "Economia de dados") e indicador de bitrate atual
 - [ ] **Preview borrado das transmissões de tela** em vez de abrir o vídeo de
       todos automaticamente; usuário clica para assistir e alterna entre elas
       > Não anexar o <video> ao DOM enquanto não assistido = não decodifica

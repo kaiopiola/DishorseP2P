@@ -452,6 +452,7 @@ function setupVoiceRoom(room, spaceId) {
     if (micStream) room.addStream(micStream, pid, { kind: 'mic' });
     if (camStream) room.addStream(camStream, pid, { kind: 'camera' });
     if (screenStream) room.addStream(screenStream, pid, { kind: 'screen' });
+    if (camStream || screenStream) setTimeout(applyEncodingParams, 800);
     renderChannels();
   });
 
@@ -613,12 +614,13 @@ function updateMicButton() {
 $('btnCam').onclick = async () => {
   if (camStream) return stopCam();
   try {
-    camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    camStream = await navigator.mediaDevices.getUserMedia({ video: camConstraints() });
     if (voice) voice.room.addStream(camStream, null, { kind: 'camera' });
     setParticipantCamera('local', camStream);
     camStream.getVideoTracks()[0].addEventListener('ended', stopCam);
     $('btnCam').classList.add('active');
     updateVoiceUI();
+    setTimeout(applyEncodingParams, 800); // após a negociação
   } catch (err) {
     pushSys('câmera: ' + err.message);
   }
@@ -639,12 +641,13 @@ $('btnScreen').onclick = async () => {
   showSourcePicker(sources, async (id) => {
     await window.desktop.setChosenSource(id);
     try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: screenConstraints(), audio: false });
       if (voice) voice.room.addStream(screenStream, null, { kind: 'screen' });
       addScreenTile('local', screenStream);
       screenStream.getVideoTracks()[0].addEventListener('ended', stopScreen);
       $('btnScreen').classList.add('active');
       updateVoiceUI();
+      setTimeout(applyEncodingParams, 800);
     } catch (err) {
       pushSys('tela: ' + err.message);
     }
@@ -890,9 +893,65 @@ $('btnPip').onclick = () => {
 //  CONFIGURAÇÕES / DISPOSITIVOS
 // ========================================================================
 const settings = Object.assign(
-  { micId: '', outputId: '', volume: 1, noise: true, echo: true, agc: true, turnUrl: '', turnUser: '', turnPass: '' },
+  {
+    micId: '', outputId: '', volume: 1, noise: true, echo: true, agc: true,
+    maxHeight: 720, maxFps: 30, // qualidade de transmissão (0 = sem limite)
+    turnUrl: '', turnUser: '', turnPass: '',
+  },
   JSON.parse(localStorage.getItem('p2pSettings') || '{}')
 );
+
+// ---- Qualidade de transmissão ------------------------------------------
+function camConstraints() {
+  const v = {};
+  if (settings.maxHeight) {
+    v.height = { ideal: settings.maxHeight };
+    v.width = { ideal: Math.round((settings.maxHeight * 16) / 9) };
+  }
+  if (settings.maxFps) v.frameRate = { ideal: settings.maxFps, max: settings.maxFps };
+  return Object.keys(v).length ? v : true;
+}
+function screenConstraints() {
+  const v = {};
+  if (settings.maxHeight) v.height = { max: settings.maxHeight };
+  if (settings.maxFps) v.frameRate = { ideal: settings.maxFps, max: settings.maxFps };
+  return Object.keys(v).length ? v : true;
+}
+function bitrateFor(h) {
+  if (!h) return 0; // sem limite
+  if (h <= 360) return 500e3;
+  if (h <= 480) return 900e3;
+  if (h <= 720) return 1_800_000;
+  if (h <= 1080) return 3_500_000;
+  return 0;
+}
+// Aplica maxBitrate/maxFramerate nos senders de vídeo (limite real de banda).
+function applyEncodingParams() {
+  if (!voice || !voice.room.getPeers) return;
+  const max = bitrateFor(settings.maxHeight);
+  const peers = voice.room.getPeers();
+  Object.values(peers).forEach((pc) => {
+    if (!pc.getSenders) return;
+    pc.getSenders().forEach(async (sender) => {
+      if (!sender.track || sender.track.kind !== 'video') return;
+      try {
+        const p = sender.getParameters();
+        if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+        p.encodings[0].maxBitrate = max || undefined;
+        if (settings.maxFps) p.encodings[0].maxFramerate = settings.maxFps;
+        await sender.setParameters(p);
+      } catch (e) {}
+    });
+  });
+}
+// Aplica a nova qualidade às transmissões já ativas, sem reabrir.
+function applyLiveVideoQuality() {
+  const fps = settings.maxFps ? { frameRate: { max: settings.maxFps } } : {};
+  const res = settings.maxHeight ? { height: { ideal: settings.maxHeight } } : {};
+  if (camStream) camStream.getVideoTracks()[0]?.applyConstraints({ ...res, ...fps }).catch(() => {});
+  if (screenStream) screenStream.getVideoTracks()[0]?.applyConstraints({ ...fps }).catch(() => {});
+  applyEncodingParams();
+}
 function saveSettings() {
   localStorage.setItem('p2pSettings', JSON.stringify(settings));
 }
@@ -952,6 +1011,8 @@ function syncSettingsUI() {
   $('chkNoise').checked = settings.noise;
   $('chkEcho').checked = settings.echo;
   $('chkAgc').checked = settings.agc;
+  $('selRes').value = String(settings.maxHeight);
+  $('selFps').value = String(settings.maxFps);
   $('inpTurnUrl').value = settings.turnUrl;
   $('inpTurnUser').value = settings.turnUser;
   $('inpTurnPass').value = settings.turnPass;
@@ -1001,6 +1062,16 @@ $('chkAgc').onchange = (e) => {
   settings.agc = e.target.checked;
   saveSettings();
   if (voice) applyMic();
+};
+$('selRes').onchange = (e) => {
+  settings.maxHeight = parseInt(e.target.value, 10) || 0;
+  saveSettings();
+  applyLiveVideoQuality();
+};
+$('selFps').onchange = (e) => {
+  settings.maxFps = parseInt(e.target.value, 10) || 0;
+  saveSettings();
+  applyLiveVideoQuality();
 };
 $('inpTurnUrl').oninput = (e) => {
   settings.turnUrl = e.target.value;
