@@ -62,19 +62,20 @@ Decisões tomadas:
 - [x] Edição restrita ao dono (criar canal já gated; servidor público sem dono é local)
 - [x] Convite verificado (rejeita manifesto com assinatura inválida)
 - [ ] Remover/renomear canal e renomear servidor (dono) na UI
-- [ ] **Banir/remover usuários do servidor (só dono)** — `banned` já existe no
-      manifesto; falta a UI + esconder/recusar as chaves banidas (cooperativo)
+- [x] **Banir/remover usuários do servidor (só dono)** — botão ✕ na lista da call;
+      adiciona a chave a `banned`, reassina e propaga; clientes honestos escondem os
+      banidos e o próprio banido sai do servidor ao receber o manifesto (cooperativo)
+- [ ] Desbanir (remover de `banned`) na UI
 - [ ] Papéis (dono/admin/membro) — admins adicionais assinados pelo dono
 - [ ] (futuro) Transferência de propriedade
 - [ ] (futuro) Dono offline: co-admins / quórum
 > Servidor legado "Daggerfall" (sem dono) segue como espaço público local, sem
 > verificação de manifesto.
 
-## ✨ Polimento de UX (novo)
-- [ ] **Ícones de status na lista da call**, ao lado do nome (estilo Discord):
-      🔇 mudo, 📷 câmera ligada, 🖥️ transmitindo tela
-      > Câmera/tela: derivável da presença dos tiles do peer. Mudo: precisa o peer
-      > anunciar o estado (action 'state' com {muted, cam, screen}).
+## ✨ Polimento de UX
+- [x] **Ícones de status na lista da call** (estilo Discord): 🔇 mudo, 📷 câmera,
+      🖥️ tela — via action 'state' {muted, cam, screen}, broadcast a cada mudança
+- [ ] Ícone de fala/anel também no stage grande (hoje só borda)
 
 ## 👤 Perfil & mídia (novo)
 - [ ] **Avatar de imagem** personalizado, atrelado à identidade
@@ -91,6 +92,19 @@ Decisões tomadas:
 - [ ] Lista de conversas privadas separada dos servidores
 - [ ] Assinadas/verificadas como os canais (o transporte já é E2E via DTLS)
 - [ ] (futuro) grupos privados (DM em grupo)
+
+## 🎚️ Qualidade & performance de transmissão (novo)
+- [ ] **Seleção de qualidade** (resolução) e **limite de FPS** por transmissão
+      (câmera/tela), para o usuário não forçar sempre o máximo
+      > Aplicar via constraints (width/height/frameRate) no getUserMedia/
+      > getDisplayMedia E via RTCRtpSender.setParameters (maxBitrate/maxFramerate/
+      > scaleResolutionDownBy). Guardar preferência nas configurações.
+- [ ] **Preview borrado das transmissões de tela** em vez de abrir o vídeo de
+      todos automaticamente; usuário clica para assistir e alterna entre elas
+      > Não anexar o <video> ao DOM enquanto não assistido = não decodifica
+      > (economiza CPU). Mostrar thumbnail/frame congelado borrado. Bandwidth
+      > ainda flui no mesh; reduzir de verdade exigiria pausar track/simulcast
+      > (avaliar sinalizar "quero/não quero receber" ao emissor).
 
 ## 💾 Milestone 4 — Persistência local-first (CRDT)
 - [ ] Histórico de texto por canal com CRDT (Yjs/Automerge) sobre data channel

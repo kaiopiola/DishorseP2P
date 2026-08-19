@@ -141,9 +141,10 @@ function renderChannels() {
     if (voice && voice.key === key(sp.id, c.id)) {
       const wrap = document.createElement('div');
       wrap.className = 'voice-members';
-      ['local', ...Object.keys(voiceParticipants).filter((p) => p !== 'local')].forEach(
-        (pid) => wrap.appendChild(voiceMemberEl(pid))
+      const others = Object.keys(voiceParticipants).filter(
+        (p) => p !== 'local' && !isBannedPub(voiceParticipants[p]?.pub)
       );
+      ['local', ...others].forEach((pid) => wrap.appendChild(voiceMemberEl(pid)));
       channelList.appendChild(wrap);
     }
   });
@@ -193,10 +194,39 @@ function voiceMemberEl(pid) {
   av.textContent = initialOf(nickOf(pid));
   av.style.background = `hsl(${hueOf(colorKey(pid))} 55% 45%)`;
   const nm = document.createElement('span');
+  nm.className = 'vm-name';
   nm.textContent = pid === 'local' ? `${nickOf(pid)} (você)` : nickOf(pid);
   d.append(av, nm);
-  if (verifiedOf(pid)) d.append(verifiedBadge(pid));
+
+  const right = document.createElement('span');
+  right.className = 'vm-right';
+  if (verifiedOf(pid)) right.append(verifiedBadge(pid));
+  const st = stateOf(pid);
+  if (st.muted) right.append(statusIcon('🔇', 'mudo'));
+  if (st.cam) right.append(statusIcon('📷', 'câmera ligada'));
+  if (st.screen) right.append(statusIcon('🖥️', 'transmitindo tela'));
+  // botão de banir: só o dono do servidor, e não em si mesmo
+  const sp = getSpace(voice?.spaceId);
+  if (pid !== 'local' && sp && store.isOwner(sp) && pubOf(pid)) {
+    const ban = document.createElement('button');
+    ban.className = 'vm-ban';
+    ban.textContent = '✕';
+    ban.title = 'Banir do servidor';
+    ban.onclick = (e) => {
+      e.stopPropagation();
+      banUser(pubOf(pid));
+    };
+    right.append(ban);
+  }
+  d.append(right);
   return d;
+}
+function statusIcon(ch, title) {
+  const s = document.createElement('span');
+  s.className = 'st-ico';
+  s.textContent = ch;
+  s.title = title;
+  return s;
 }
 
 // pequeno selo de identidade verificada, com o fingerprint no title
@@ -394,10 +424,22 @@ function setupVoiceRoom(room, spaceId) {
   };
   getIdent(async (msg, pid) => {
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
-    voiceParticipants[pid] = { pub: msg.pub, nick: msg.nick, verified };
+    const prev = voiceParticipants[pid] || {};
+    voiceParticipants[pid] = { pub: msg.pub, nick: msg.nick, verified, state: prev.state };
+    if (isBannedPub(msg.pub)) return removeParticipant(pid); // cooperativo
     refreshTileLabels(pid);
     renderChannels();
   });
+
+  // estado de mídia (mudo / câmera / tela) para ícones na lista
+  const [sendState, getState] = room.makeAction('state');
+  if (voice) voice.sendState = sendState;
+  getState((st, pid) => {
+    const p = voiceParticipants[pid] || (voiceParticipants[pid] = { nick: pid.slice(0, 6), verified: false });
+    p.state = st;
+    renderChannels();
+  });
+
   const announceMan = manifestSync(room, spaceId);
   if (voice) voice.announceMan = announceMan;
 
@@ -406,6 +448,7 @@ function setupVoiceRoom(room, spaceId) {
     voiceParticipants[pid] = voiceParticipants[pid] || { nick: pid.slice(0, 6), verified: false };
     announce(pid);
     announceMan(pid);
+    sendState(localState(), pid);
     if (micStream) room.addStream(micStream, pid, { kind: 'mic' });
     if (camStream) room.addStream(camStream, pid, { kind: 'camera' });
     if (screenStream) room.addStream(screenStream, pid, { kind: 'screen' });
@@ -424,6 +467,7 @@ function setupVoiceRoom(room, spaceId) {
   });
 
   room.onPeerStream((stream, pid, meta) => {
+    if (voiceParticipants[pid] && isBannedPub(voiceParticipants[pid].pub)) return;
     const kind = (meta && meta.kind) || 'camera';
     if (kind === 'mic') {
       let a = document.getElementById('audio-' + pid);
@@ -457,6 +501,57 @@ function updateVoiceStatus() {
   }
 }
 
+// ---- estado de mídia (para ícones e broadcast) --------------------------
+function localState() {
+  return { muted: !micStream || !micEnabled, cam: !!camStream, screen: !!screenStream };
+}
+function stateOf(pid) {
+  return pid === 'local'
+    ? localState()
+    : voiceParticipants[pid]?.state || { muted: true, cam: false, screen: false };
+}
+function broadcastState() {
+  if (voice && voice.sendState) voice.sendState(localState());
+}
+// chamar em toda mudança de mídia: atualiza ícones locais + avisa os peers
+function updateVoiceUI() {
+  renderChannels();
+  broadcastState();
+}
+
+// ---- banimento (cooperativo, só o dono) ---------------------------------
+function isBannedPub(pub) {
+  const sp = getSpace(voice?.spaceId);
+  return !!(pub && sp && (sp.banned || []).includes(pub));
+}
+function removeParticipant(pid) {
+  detachVAD(pid);
+  removeTile(pid);
+  removeTile(pid + ':screen');
+  const a = $('audio-' + pid);
+  if (a) a.remove();
+  delete voiceParticipants[pid];
+  renderChannels();
+  renderStage();
+}
+function enforceBans() {
+  if (!voice) return;
+  Object.keys(voiceParticipants).forEach((pid) => {
+    if (pid !== 'local' && isBannedPub(voiceParticipants[pid].pub)) removeParticipant(pid);
+  });
+}
+async function banUser(pub) {
+  const sp = getSpace(voice?.spaceId);
+  if (!sp || !store.isOwner(sp) || !pub) return;
+  if (!sp.banned) sp.banned = [];
+  if (!sp.banned.includes(pub)) sp.banned.push(pub);
+  await store.bumpAndSign(sp);
+  store.saveSpaces(spaces);
+  broadcastManifest(sp.id); // banido recebe e sai sozinho (cooperativo)
+  enforceBans();
+  renderChannels();
+}
+
 // ========================================================================
 //  MÍDIA (mic / câmera / tela)  — opera sobre voice.room
 // ========================================================================
@@ -479,6 +574,7 @@ async function applyMic() {
   ensureParticipant('local');
   attachVAD('local', micStream);
   updateMicButton();
+  updateVoiceUI();
   populateDevices();
 }
 
@@ -496,6 +592,7 @@ $('btnMic').onclick = () => {
   micEnabled = !micEnabled;
   micStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled));
   updateMicButton();
+  updateVoiceUI();
 };
 function updateMicButton() {
   const b = $('btnMic');
@@ -521,6 +618,7 @@ $('btnCam').onclick = async () => {
     setParticipantCamera('local', camStream);
     camStream.getVideoTracks()[0].addEventListener('ended', stopCam);
     $('btnCam').classList.add('active');
+    updateVoiceUI();
   } catch (err) {
     pushSys('câmera: ' + err.message);
   }
@@ -532,6 +630,7 @@ function stopCam() {
   camStream = null;
   setParticipantCamera('local', null);
   $('btnCam').classList.remove('active');
+  updateVoiceUI();
 }
 
 $('btnScreen').onclick = async () => {
@@ -545,6 +644,7 @@ $('btnScreen').onclick = async () => {
       addScreenTile('local', screenStream);
       screenStream.getVideoTracks()[0].addEventListener('ended', stopScreen);
       $('btnScreen').classList.add('active');
+      updateVoiceUI();
     } catch (err) {
       pushSys('tela: ' + err.message);
     }
@@ -557,6 +657,7 @@ function stopScreen() {
   screenStream = null;
   removeTile('local:screen');
   $('btnScreen').classList.remove('active');
+  updateVoiceUI();
 }
 
 // ========================================================================
@@ -1068,10 +1169,20 @@ async function adoptManifest(incoming, spaceId) {
 }
 
 function replaceSpace(sp) {
+  // fui banido deste servidor? saio dele (cooperativo)
+  if ((sp.banned || []).includes(identity.pub())) {
+    if (voice && voice.spaceId === sp.id) leaveVoice();
+    spaces = spaces.filter((s) => s.id !== sp.id);
+    store.saveSpaces(spaces);
+    if (currentSpaceId === sp.id && spaces[0]) selectSpace(spaces[0].id);
+    renderRail();
+    return;
+  }
   const i = spaces.findIndex((s) => s.id === sp.id);
   if (i >= 0) spaces[i] = sp;
   else spaces.push(sp);
   store.saveSpaces(spaces);
+  enforceBans();
   renderRail();
   if (currentSpaceId === sp.id) {
     renderChannels();
