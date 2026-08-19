@@ -1,0 +1,21 @@
+{
+  "name": "webrtc-p2p-chat",
+  "version": "0.1.0",
+  "description": "Chat de vídeo/tela/texto P2P descentralizado com Electron + Trystero (sem servidor)",
+  "main": "main.js",
+  "scripts": {
+    "build": "esbuild renderer/index.js --bundle --outfile=dist/renderer.js --format=iife --platform=browser",
+    "watch": "esbuild renderer/index.js --bundle --outfile=dist/renderer.js --format=iife --platform=browser --watch",
+    "start": "npm run build && electron .",
+    "dev": "electron ."
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "esbuild": "^0.24.0"
+  },
+  "dependencies": {
+    "trystero": "^0.20.0"
+  }
+}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src *; media-src 'self' blob:;"
+    />
+    <title>P2P Chat</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>P2P Chat <small>· sem servidor (Trystero)</small></h1>
+      <div class="room-bar">
+        <input id="room" placeholder="nome da sala" value="daggerfall" />
+        <input id="nick" placeholder="seu apelido" />
+        <button id="join">Entrar</button>
+        <span id="status" class="status">desconectado</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="videoarea">
+        <div class="stage" id="stage">
+          <div class="placeholder" id="placeholder">nenhum vídeo — ative sua câmera ou tela, ou aguarde peers</div>
+        </div>
+        <div class="filmstrip" id="filmstrip"></div>
+      </section>
+
+      <aside class="sidebar">
+        <div class="controls">
+          <button id="btnMic" disabled>🎤 Microfone</button>
+          <button id="btnCam" disabled>📷 Câmera</button>
+          <button id="btnScreen" disabled>🖥️ Tela</button>
+          <button id="btnPip" disabled title="Picture-in-Picture (prioriza tela compartilhada)">⧉ PiP</button>
+        </div>
+        <div class="chat">
+          <ul id="messages"></ul>
+          <form id="chatForm">
+            <input id="chatInput" placeholder="mensagem..." autocomplete="off" disabled />
+            <button id="chatSend" disabled>Enviar</button>
+          </form>
+        </div>
+      </aside>
+    </main>
+
+    <!-- áudio remoto (mic dos peers) fica aqui, sem UI -->
+    <div id="audioSinks" style="display: none"></div>
+
+    <!-- seletor de fonte de tela -->
+    <div id="sourceModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Escolha o que compartilhar</h2>
+        <div id="sourceList" class="source-list"></div>
+        <button id="sourceCancel">Cancelar</button>
+      </div>
+    </div>
+
+    <script src="dist/renderer.js"></script>
+  </body>
+</html>
