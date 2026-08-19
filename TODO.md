@@ -76,6 +76,20 @@ Decisões tomadas:
 - [x] **Ícones de status na lista da call** (estilo Discord): 🔇 mudo, 📷 câmera,
       🖥️ tela — via action 'state' {muted, cam, screen}, broadcast a cada mudança
 - [ ] Ícone de fala/anel também no stage grande (hoje só borda)
+- [ ] **Mutar SAÍDA de áudio** durante a call (surdo), igual ao mutar microfone
+      (não tocar o áudio dos peers; ícone de estado próprio)
+- [ ] **Toggles de mic e saída ao lado da engrenagem** (me-bar), para já entrar
+      na call com a config desejada (mic/saída mutados de antemão)
+- [ ] **Lista de quem está assistindo minha transmissão** de tela
+      > Emissor sabe quem está recebendo? No mesh, o receptor precisa sinalizar
+      > "estou assistindo esta tela" (action) ao focar/desfocar; casa com o item
+      > de reduzir banda das telas não assistidas.
+- [ ] **Chat de texto lateral (colapsável) dentro do canal de voz**, à direita
+      do palco — conversar por texto sem sair da call
+
+## 🖥️ Desktop / janela
+- [x] Desativar o menu superior padrão do Electron
+- [ ] (ver seção "Segundo plano & inicialização")
 
 ## 👤 Perfil & mídia (novo)
 - [ ] **Avatar de imagem** personalizado, atrelado à identidade

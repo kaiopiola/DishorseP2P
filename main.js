@@ -1,5 +1,8 @@
-const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
+const { app, BrowserWindow, session, desktopCapturer, ipcMain, Menu } = require('electron');
 const path = require('path');
+
+// Remove o menu superior padrão do Electron (File/Edit/View/...).
+Menu.setApplicationMenu(null);
 
 function createWindow() {
   const win = new BrowserWindow({
