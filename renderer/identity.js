@@ -8,11 +8,16 @@ const DB_NAME = 'p2p-identity';
 const STORE = 'keys';
 const ALGO = { name: 'ECDSA', namedCurve: 'P-256' };
 const SIGN_ALGO = { name: 'ECDSA', hash: 'SHA-256' };
+const ALGO_DH = { name: 'ECDH', namedCurve: 'P-256' };
 
-let _priv = null; // CryptoKey (não-extraível)
-let _pub = ''; // base64url da chave pública crua
+let _priv = null; // CryptoKey de assinatura (não-extraível)
+let _pub = ''; // base64url da chave pública de assinatura
+let _dhPriv = null; // CryptoKey ECDH (não-extraível)
+let _dhPub = ''; // base64url da chave pública ECDH
 const _pubCache = {}; // base64url -> CryptoKey importada (verificação)
+const _dhCache = {}; // peerDhPub -> AES-GCM CryptoKey derivada
 const enc = new TextEncoder();
+const dec = new TextDecoder();
 
 // ---- IndexedDB (promisificado) -----------------------------------------
 function idb() {
@@ -55,25 +60,69 @@ function b64uToU8(str) {
 }
 
 // ---- API ----------------------------------------------------------------
+async function genDh() {
+  const kp = await crypto.subtle.generateKey(ALGO_DH, true, ['deriveKey', 'deriveBits']);
+  const rawPub = await crypto.subtle.exportKey('raw', kp.publicKey);
+  const pkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
+  const priv = await crypto.subtle.importKey('pkcs8', pkcs8, ALGO_DH, false, ['deriveKey', 'deriveBits']);
+  return { dhPriv: priv, dhPub: rawPub };
+}
+
 export async function init() {
   const db = await idb();
   let rec = await idbGet(db, 'self');
+  let dirty = false;
   if (!rec) {
     // gera extraível, exporta pub cru, reimporta a privada como não-extraível
     const kp = await crypto.subtle.generateKey(ALGO, true, ['sign', 'verify']);
     const rawPub = await crypto.subtle.exportKey('raw', kp.publicKey);
     const pkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
     const priv = await crypto.subtle.importKey('pkcs8', pkcs8, ALGO, false, ['sign']);
-    rec = { priv, pub: rawPub };
-    await idbPut(db, 'self', rec);
+    rec = { priv, pub: rawPub, ...(await genDh()) };
+    dirty = true;
+  } else if (!rec.dhPriv) {
+    // migração: identidade antiga só de assinatura ganha um par ECDH
+    Object.assign(rec, await genDh());
+    dirty = true;
   }
+  if (dirty) await idbPut(db, 'self', rec);
   _priv = rec.priv;
   _pub = abToB64u(rec.pub);
+  _dhPriv = rec.dhPriv;
+  _dhPub = abToB64u(rec.dhPub);
   return { pub: _pub };
 }
 
 export function pub() {
   return _pub;
+}
+export function dhPub() {
+  return _dhPub;
+}
+
+// ---- E2E (ECDH -> AES-GCM) ----------------------------------------------
+// Deriva a chave AES-GCM compartilhada com um peer a partir da chave ECDH dele.
+export async function deriveAesKey(peerDhPubB64) {
+  if (_dhCache[peerDhPubB64]) return _dhCache[peerDhPubB64];
+  const peerKey = await crypto.subtle.importKey('raw', b64uToU8(peerDhPubB64), ALGO_DH, false, []);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'ECDH', public: peerKey },
+    _dhPriv,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+  _dhCache[peerDhPubB64] = key;
+  return key;
+}
+export async function aesEncrypt(key, str) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(str));
+  return { iv: abToB64u(iv), ct: abToB64u(ct) };
+}
+export async function aesDecrypt(key, ivB64, ctB64) {
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64uToU8(ivB64) }, key, b64uToU8(ctB64));
+  return dec.decode(pt);
 }
 
 // Hash curto (SHA-256 → base64url, 16 chars) para derivar ids estáveis, p.ex.

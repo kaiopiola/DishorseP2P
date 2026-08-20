@@ -26,6 +26,9 @@ const dmSend = {}; // pub -> enviar mensagem
 const dmDel = {}; // pub -> excluir mensagem
 const dmIdentsByKey = {}; // dmKey -> { peerId -> ident }
 const dmUnread = {}; // pub -> nº de não lidas
+const dmAesKey = {}; // partnerPub -> chave AES-GCM (E2E)
+const dmOutbox = {}; // partnerPub -> mensagens pendentes (sem chave ainda)
+const dmRawSend = {}; // partnerPub -> função crua de envio (para flush)
 
 // presença em canais de voz (ver quem está na call sem entrar)
 const presenceRooms = {}; // channelKey -> sala 'vpres:<key>'
@@ -123,6 +126,19 @@ function pushSys(text) {
   if (textRoomKey) pushMsg(textRoomKey, 'sistema', text, true);
 }
 
+// ---- Validação de entradas (endurecimento contra clientes hostis) -------
+const MAX_TEXT = 4000;
+const MAX_IMG = 3_000_000; // ~3MB de dataURL
+const MAX_NICK = 40;
+const MAX_BIO = 200;
+const MAX_PUB = 200;
+const clampStr = (s, n) => (typeof s === 'string' ? s.slice(0, n) : '');
+const validText = (t) => typeof t === 'string' && t.length <= MAX_TEXT;
+const validImg = (i) => !i || (typeof i === 'string' && i.startsWith('data:image/') && i.length <= MAX_IMG);
+const validAvatar = (a) => !a || (typeof a === 'string' && a.startsWith('data:image/') && a.length <= MAX_IMG);
+const validIdent = (m) =>
+  m && typeof m === 'object' && typeof m.pub === 'string' && m.pub.length <= MAX_PUB && typeof m.sig === 'string';
+
 // ---- DOM refs -----------------------------------------------------------
 const rail = $('rail');
 const channelList = $('channelList');
@@ -210,29 +226,62 @@ function selectDMMode() {
   if (currentDM) selectDM(currentDM.pub, currentDM.nick);
   else showEmpty();
 }
-// Junta na sala da DM em 2º plano (recebe mensagens mesmo sem estar aberta).
+// Cifra e envia uma mensagem de DM (E2E via AES-GCM da chave derivada por ECDH).
+async function sendEncDM(send, key, text, img, id) {
+  const { iv, ct } = await identity.aesEncrypt(key, JSON.stringify({ text, img }));
+  send({ iv, ct, id });
+}
+function flushDMOutbox(pub) {
+  const out = dmOutbox[pub];
+  if (!out || !out.length || !dmAesKey[pub] || !dmRawSend[pub]) return;
+  const send = dmRawSend[pub];
+  const key = dmAesKey[pub];
+  out.forEach(({ text, img, id }) => sendEncDM(send, key, text, img, id));
+  dmOutbox[pub] = [];
+}
+
+// Junta na sala da DM em 2º plano (recebe mesmo sem estar aberta). Conteúdo E2E.
 async function joinDMRoom(pub, nick) {
   if (dmRooms[pub]) return;
   const k = await dmKey(pub);
   const room = joinRoom({ appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } }, 'text:' + k);
   dmRooms[pub] = room;
   const idents = (dmIdentsByKey[k] = dmIdentsByKey[k] || {});
-  const announce = attachHandshake(room, idents);
+  // ao receber a identidade do parceiro, deriva a chave E2E e envia pendentes
+  const announce = attachHandshake(room, idents, async (pid, id) => {
+    if (id.pub === pub && id.dhPub && !dmAesKey[pub]) {
+      try {
+        dmAesKey[pub] = await identity.deriveAesKey(id.dhPub);
+        flushDMOutbox(pub);
+      } catch (e) {}
+    }
+  });
   const [send, get] = room.makeAction('chat');
+  dmRawSend[pub] = send;
   dmSend[pub] = async (text, img) => {
     const id = msgId();
-    const sig = await identity.sign(signContent(text, img));
-    send({ text, img, sig, id });
+    if (dmAesKey[pub]) await sendEncDM(send, dmAesKey[pub], text, img, id);
+    else (dmOutbox[pub] = dmOutbox[pub] || []).push({ text, img, id }); // envia ao ter a chave
     return id;
   };
   get(async (payload, pid) => {
+    if (typeof payload.iv !== 'string' || typeof payload.ct !== 'string') return;
+    let key = dmAesKey[pub];
+    if (!key && idents[pid]?.dhPub) {
+      try {
+        key = dmAesKey[pub] = await identity.deriveAesKey(idents[pid].dhPub);
+      } catch (e) {}
+    }
+    if (!key) return;
+    let data;
+    try {
+      data = JSON.parse(await identity.aesDecrypt(key, payload.iv, payload.ct));
+    } catch (e) {
+      return; // não decifrou: não é do parceiro / adulterado
+    }
+    if (!validText(data.text) || !validImg(data.img)) return;
     if (deletedIdsByChannel[k]?.has(payload.id)) return;
-    const idn = idents[pid];
-    const nm = idn?.nick || pid.slice(0, 6);
-    const verified = idn
-      ? await identity.verify(idn.pub, payload.sig, signContent(payload.text, payload.img))
-      : false;
-    pushMsg(k, nm, payload.text, false, verified, payload.img, { id: payload.id, authorPub: idn?.pub });
+    pushMsg(k, idents[pid]?.nick || nick, data.text, false, true, data.img, { id: payload.id, authorPub: pub });
     if (!(mode === 'dm' && currentDM && currentDM.pub === pub)) {
       dmUnread[pub] = (dmUnread[pub] || 0) + 1;
       renderRail();
@@ -364,8 +413,9 @@ function joinPresence(k) {
   room.__presSend = sendIdent;
   room.__presGone = sendGone;
   getIdent(async (msg, pid) => {
+    if (!validIdent(msg)) return;
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
-    presenceMembers[k][pid] = { pub: msg.pub, nick: msg.nick, verified };
+    presenceMembers[k][pid] = { pub: msg.pub, nick: clampStr(msg.nick, MAX_NICK), verified };
     if (mode === 'server') renderChannels();
   });
   getGone((msg) => {
@@ -656,8 +706,15 @@ function joinText(k) {
   };
   textAnnounceIdent = announce;
   getIdent(async (msg, pid) => {
+    if (!validIdent(msg)) return;
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
-    textIdents[pid] = { pub: msg.pub, nick: msg.nick, verified, avatar: msg.avatar, bio: msg.bio };
+    textIdents[pid] = {
+      pub: msg.pub,
+      nick: clampStr(msg.nick, MAX_NICK),
+      verified,
+      avatar: validAvatar(msg.avatar) ? msg.avatar : '',
+      bio: clampStr(msg.bio, MAX_BIO),
+    };
     if (!announced.has(pid)) announce(pid); // responde se meu anúncio se perdeu
   });
   textAnnounceMan = manifestSync(textRoom, parseKey(k).spaceId);
@@ -678,6 +735,7 @@ function joinText(k) {
     return id;
   };
   get(async (payload, pid) => {
+    if (!validText(payload.text) || !validImg(payload.img)) return;
     if (deletedIdsByChannel[k]?.has(payload.id)) return; // já apagada
     const id = textIdents[pid];
     const nick = id?.nick || pid.slice(0, 6);
@@ -882,10 +940,16 @@ function setupVoiceRoom(room, spaceId) {
   };
   if (voice) voice.announceIdent = announce;
   getIdent(async (msg, pid) => {
+    if (!validIdent(msg)) return;
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
     const prev = voiceParticipants[pid] || {};
     voiceParticipants[pid] = {
-      pub: msg.pub, nick: msg.nick, verified, state: prev.state, avatar: msg.avatar, bio: msg.bio,
+      pub: msg.pub,
+      nick: clampStr(msg.nick, MAX_NICK),
+      verified,
+      state: prev.state,
+      avatar: validAvatar(msg.avatar) ? msg.avatar : '',
+      bio: clampStr(msg.bio, MAX_BIO),
     };
     if (isBannedPub(msg.pub)) return removeParticipant(pid); // cooperativo
     if (!announced.has(pid)) announce(pid); // meu anúncio pode ter se perdido: respondo
@@ -981,7 +1045,7 @@ function updateVoiceStatus() {
 
 // ---- Chat lateral do canal de voz ---------------------------------------
 // handshake de identidade reutilizável (responde ao receber + registra)
-function attachHandshake(room, identsMap) {
+function attachHandshake(room, identsMap, onIdent) {
   const [sendIdent, getIdent] = room.makeAction('ident');
   const announced = new Set();
   const announce = async (target) => {
@@ -989,9 +1053,19 @@ function attachHandshake(room, identsMap) {
     sendIdent(await identPayload(), target);
   };
   getIdent(async (msg, pid) => {
+    if (!validIdent(msg)) return;
     const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
-    identsMap[pid] = { pub: msg.pub, nick: msg.nick, verified, avatar: msg.avatar, bio: msg.bio };
+    const dhOk = msg.dhPub && (await identity.verify(msg.pub, msg.dhSig, msg.dhPub));
+    identsMap[pid] = {
+      pub: msg.pub,
+      nick: clampStr(msg.nick, MAX_NICK),
+      verified,
+      avatar: validAvatar(msg.avatar) ? msg.avatar : '',
+      bio: clampStr(msg.bio, MAX_BIO),
+      dhPub: dhOk ? msg.dhPub : null,
+    };
     if (!announced.has(pid)) announce(pid);
+    if (onIdent) onIdent(pid, identsMap[pid]);
   });
   return announce;
 }
@@ -1012,6 +1086,7 @@ function joinVoiceChat(k) {
     return id;
   };
   get(async (payload, pid) => {
+    if (!validText(payload.text) || !validImg(payload.img)) return;
     if (voiceChatDeleted.has(payload.id)) return;
     const id = voiceChatIdents[pid];
     const nick = id?.nick || pid.slice(0, 6);
@@ -2279,8 +2354,23 @@ function manifestSync(room, spaceId) {
   };
 }
 
+function validManifest(m) {
+  return (
+    m &&
+    typeof m.owner === 'string' &&
+    m.owner.length <= MAX_PUB &&
+    typeof m.name === 'string' &&
+    m.name.length <= 120 &&
+    (!m.image || (typeof m.image === 'string' && m.image.length <= MAX_IMG)) &&
+    Array.isArray(m.channels) &&
+    m.channels.length <= 200 &&
+    Array.isArray(m.banned || []) &&
+    (m.banned || []).length <= 5000
+  );
+}
 async function adoptManifest(incoming, spaceId) {
   if (!incoming || incoming.id !== spaceId || !incoming.owner) return;
+  if (!validManifest(incoming)) return; // rejeita manifesto malformado/gigante
   const cur = getSpace(spaceId);
   if (cur) {
     if (cur.owner && incoming.owner !== cur.owner) return; // dono diferente
@@ -2367,7 +2457,7 @@ function joinByInvite(code) {
     room.__sendMan = sendMan;
     getMan(async (incoming) => {
       if (done || !incoming || incoming.id !== code || !incoming.owner) return;
-      if (!(await store.verifyManifest(incoming))) return;
+      if (!validManifest(incoming) || !(await store.verifyManifest(incoming))) return;
       done = true;
       discoveryRooms[code] = room; // mantém como sala de descoberta
       room.onPeerJoin(() => {
@@ -2472,7 +2562,9 @@ function signContent(text, img) {
 // payload de identidade (inclui avatar/bio, tudo atrelado à chave verificada)
 async function identPayload() {
   const sig = await identity.sign(identity.pub());
-  return { pub: identity.pub(), nick: myNick(), sig, avatar: profile.avatar || '', bio: profile.bio || '' };
+  const dhPub = identity.dhPub();
+  const dhSig = await identity.sign(dhPub); // liga a chave ECDH à identidade
+  return { pub: identity.pub(), nick: myNick(), sig, avatar: profile.avatar || '', bio: profile.bio || '', dhPub, dhSig };
 }
 // reanuncia minha identidade em todas as salas ativas (após mudar perfil/nick)
 let textAnnounceIdent = null;

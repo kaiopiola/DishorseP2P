@@ -136,10 +136,10 @@ Decisões tomadas:
 - [x] **CORRIGIDO**: DMs agora funcionam nos dois sentidos — caixa de entrada
       ('inbox:<hash pub>') recebe convites; salas de DM ficam ativas em 2º plano
       (recebe mesmo sem abrir); contador de não-lidas na lista
-- [ ] (futuro) E2E com ECDH (hoje qualquer um que conheça as 2 chaves poderia
-      entrar na sala; restringir ao peer esperado + cifrar com chave derivada)
-- [ ] (futuro) imagens/histórico nas DMs já funcionam (reusam o chat); faltam
-      notificações e grupos privados
+- [x] **E2E nas DMs (ECDH → AES-GCM)**: identidade ganha par ECDH (além do ECDSA),
+      trocado e assinado no handshake; conteúdo da DM cifrado ponta-a-ponta (só o
+      par decifra); mensagens pendentes esperam a chave e são enviadas ao conectar
+- [ ] (futuro) grupos privados (DM em grupo); notificações além do contador
 
 ## 🎚️ Qualidade & performance de transmissão
 - [x] **Seleção de qualidade** (resolução máx.) e **limite de FPS** nas
@@ -181,6 +181,13 @@ Decisões tomadas:
 - [x] Instância única (requestSingleInstanceLock) reabre a janela existente
 - [x] Ícone gerado programaticamente (scripts/make-icon.js → assets/icon.png)
 - [ ] (futuro) ícone .ico para o exe no empacotamento Windows
+
+## 🔒 Endurecimento (contra clientes hostis)
+- [x] Validação de entradas nos handlers: tamanho de texto/imagem, apelido/bio,
+      chave; rejeita payloads malformados/gigantes (mensagens, ident, manifesto)
+- [x] E2E nas DMs (ver acima) — a fraqueza mais concreta ao abrir o código
+- [ ] (futuro) rate-limit por peer; anti-replay com nonce por conexão
+- [ ] (futuro) segredo de build (namespacing/deterrente) — obscuridade, não trava
 
 ## 🐞 Estabilidade / conexão
 - [~] **Dessincronização ao entrar** (ID no lugar do nome; mensagens não aparecem
