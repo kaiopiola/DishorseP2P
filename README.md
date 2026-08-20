@@ -83,22 +83,20 @@ npm run dev      # abre o Electron (sem rebuild)
 O instalador Windows é gerado **no CI** (GitHub Actions). O workflow
 [`.github/workflows/build.yml`](.github/workflows/build.yml) roda **a cada push na
 `main`** (inclusive merges de PR) e também manualmente, em `windows-latest`, faz o
-build com **electron-builder** (NSIS) e sobe o instalador + `latest.yml` para uma
-**Release rascunho (draft)** no GitHub, na versão do `package.json`.
+build com **electron-builder** (NSIS) e **publica** o instalador + `latest.yml`
+numa Release do GitHub `v{versão do package.json}` (`releaseType: release`).
 
 Fluxo:
 
-1. Trabalhe via PR e faça merge na `main` → o CI builda e atualiza a Release
-   rascunho da versão atual.
-2. Quando quiser **lançar**, abra a Release rascunho no GitHub e clique em
-   **Publish** — só então o instalador fica público.
-3. Para uma **nova versão** (que o auto-updater vai distribuir), suba a versão em
-   `package.json` (ex.: `0.3.0` → `0.3.1`) antes do merge.
+1. Trabalhe via PR e faça merge na `main` → o CI builda e publica/atualiza a
+   Release da versão atual.
+2. Para **lançar uma atualização** que o auto-updater distribui, **suba a versão**
+   em `package.json` (ex.: `0.3.0` → `0.3.1`) antes do merge. Enquanto a versão não
+   muda, o push só atualiza os arquivos da mesma Release (não notifica quem já tem).
 
 **Auto-update:** o app usa `electron-updater` (em `main.js`, só quando empacotado):
-na inicialização e a cada 6h checa a Release **publicada** mais nova no GitHub,
-baixa em segundo plano e instala ao fechar. Uma Release em rascunho não é
-distribuída até ser publicada, e só versões maiores que a instalada disparam update.
+na inicialização e a cada 6h checa a Release mais nova no GitHub, baixa em segundo
+plano e instala ao fechar. Só versões maiores que a instalada disparam a atualização.
 
 > Build local do instalador (`npm run dist:win`) exige o **Modo de Desenvolvedor**
 > do Windows ativado (o `winCodeSign` do electron-builder cria symlinks). No CI
