@@ -33,14 +33,6 @@
     "directories": {
       "output": "release"
     },
-    "files": [
-      "main.js",
-      "preload.js",
-      "index.html",
-      "styles.css",
-      "dist/renderer.js",
-      "assets/**"
-    ],
     "win": {
       "icon": "assets/icon.png",
       "target": [
