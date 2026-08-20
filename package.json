@@ -14,7 +14,6 @@
     "watch": "esbuild renderer/index.js --bundle --outfile=dist/renderer.js --format=iife --platform=browser --watch",
     "start": "npm run build && electron .",
     "dev": "electron .",
-    "icon": "node scripts/make-icon.js",
     "dist:win": "npm run build && electron-builder --win --publish never",
     "release:win": "npm run build && electron-builder --win --publish always"
   },

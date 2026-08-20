@@ -179,8 +179,8 @@ Decisões tomadas:
 - [x] **Iniciar com o Windows** (na bandeja) — app.setLoginItemSettings com
       --hidden; janela começa oculta quando iniciada assim; toggle nas configs
 - [x] Instância única (requestSingleInstanceLock) reabre a janela existente
-- [x] Ícone gerado programaticamente (scripts/make-icon.js → assets/icon.png)
-- [ ] (futuro) ícone .ico para o exe no empacotamento Windows
+- [x] Ícone do projeto (cavalo no balão) em `assets/icon.png` (1024x1024) — usado
+      na janela, na bandeja e pelo electron-builder (converte p/ .ico no build)
 
 ## 🔒 Endurecimento (contra clientes hostis)
 - [x] Validação de entradas nos handlers: tamanho de texto/imagem, apelido/bio,
