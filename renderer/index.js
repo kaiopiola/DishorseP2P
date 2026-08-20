@@ -3,7 +3,7 @@ import { joinRoom, selfId } from 'trystero/torrent';
 import * as store from './store.js';
 import * as identity from './identity.js';
 
-const APP_ID = 'webrtc-p2p-chat-demo';
+const APP_ID = 'dishorse-p2p';
 const SPEAKING_THRESHOLD = 12;
 const SPEAKING_HANGOVER = 300;
 

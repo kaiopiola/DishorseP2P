@@ -115,7 +115,7 @@ function createTray() {
     .createFromPath(path.join(__dirname, 'assets', 'icon.png'))
     .resize({ width: 16, height: 16 });
   tray = new Tray(img);
-  tray.setToolTip('P2P Chat');
+  tray.setToolTip('Dishorse P2P');
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Abrir', click: () => win && win.show() },
@@ -149,7 +149,28 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     createWindow();
     createTray();
+    setupUpdater();
   });
+}
+
+// Auto-atualização via GitHub Releases (electron-updater). Só em app empacotado.
+function setupUpdater() {
+  if (!app.isPackaged) return;
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (e) {
+    console.log('[updater] indisponível:', e.message);
+    return;
+  }
+  autoUpdater.on('update-downloaded', () => {
+    if (tray) tray.setToolTip('Dishorse P2P — atualização pronta (reinicie)');
+    // instala na próxima saída; checkForUpdatesAndNotify já notifica o usuário
+  });
+  autoUpdater.on('error', (err) => console.log('[updater] erro:', err && err.message));
+  autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  // re-verifica a cada 6h
+  setInterval(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 6 * 60 * 60 * 1000);
 }
 
 app.on('window-all-closed', () => {

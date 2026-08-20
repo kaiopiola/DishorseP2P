@@ -1,0 +1,34 @@
+name: Build Windows
+
+# Dispara ao empurrar uma tag "vX.Y.Z" (a versão deve bater com package.json),
+# ou manualmente pela aba Actions.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # necessário para o electron-builder criar a Release
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Bundle do renderer (esbuild)
+        run: npm run build
+
+      - name: Build do instalador + publicar na Release (electron-builder)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always

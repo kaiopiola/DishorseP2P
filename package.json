@@ -1,21 +1,66 @@
 {
-  "name": "webrtc-p2p-chat",
-  "version": "0.2.0",
-  "description": "Chat de vídeo/tela/texto P2P descentralizado com Electron + Trystero (sem servidor)",
+  "name": "dishorse-p2p",
+  "version": "0.3.0",
+  "description": "Dishorse P2P — chat de voz, vídeo, tela e texto descentralizado (Electron + Trystero), sem servidor central",
   "main": "main.js",
+  "author": "Kaio Piola",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaiopiola/DishorseP2P.git"
+  },
   "scripts": {
     "build": "esbuild renderer/index.js --bundle --outfile=dist/renderer.js --format=iife --platform=browser",
     "watch": "esbuild renderer/index.js --bundle --outfile=dist/renderer.js --format=iife --platform=browser --watch",
     "start": "npm run build && electron .",
     "dev": "electron .",
-    "pack:win": "npm run build && electron-packager . \"P2P Chat\" --platform=win32 --arch=x64 --out=release --overwrite --app-version=0.2.0 --ignore=\"(node_modules|release|\\.git)\""
+    "icon": "node scripts/make-icon.js",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "release:win": "npm run build && electron-builder --win --publish always"
   },
-  "author": "Kaio",
-  "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
-    "@electron/packager": "^20.3.0",
     "electron": "^32.0.0",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0",
     "trystero": "^0.20.0"
+  },
+  "build": {
+    "appId": "com.kaiopiola.dishorsep2p",
+    "productName": "Dishorse P2P",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "styles.css",
+      "dist/renderer.js",
+      "assets/**"
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kaiopiola",
+        "repo": "DishorseP2P"
+      }
+    ]
   }
 }

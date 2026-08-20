@@ -1,4 +1,17 @@
-# Roadmap — P2P Chat → "Discord descentralizado"
+# Roadmap — Dishorse P2P ("Discord descentralizado")
+
+Projeto: **Dishorse P2P** · MIT · repo https://github.com/kaiopiola/DishorseP2P
+
+## 🚀 Distribuição
+- [x] Renomeado para **Dishorse P2P** (APP_ID, título, tray, README)
+- [x] **Auto-updater** (electron-updater, GitHub Releases; só em app empacotado)
+- [x] **CI Windows** (GitHub Actions) — build NSIS + publica na Release ao dar
+      push de tag `vX.Y.Z`; alimenta o auto-updater
+- [x] LICENSE MIT
+- [ ] (futuro) Assinatura de código (evitar aviso do SmartScreen)
+- [ ] (futuro) CI para Linux/Mac (por enquanto só Windows)
+
+
 
 Decisões já tomadas:
 - **Arquitetura**: Servidores (spaces) → canais (texto/voz)

@@ -1,4 +1,6 @@
-# P2P Chat (Electron + Trystero)
+# Dishorse P2P
+
+**Licença:** MIT · **Repo:** https://github.com/kaiopiola/DishorseP2P
 
 Um **"Discord descentralizado"**: servidores → canais (texto e voz), com vídeo,
 câmera, tela e voz **totalmente P2P**, sem nenhum servidor próprio. O signaling
@@ -11,8 +13,9 @@ servidores, persistência local-first/CRDT, presença e escala).
 
 ## Estrutura da UI (três colunas)
 
-- **Servidores** (rail à esquerda): cada servidor é um manifesto local (nome, ícone,
-  canais). Crie com **+** ou entre por **🔗 convite** (código base64 do manifesto).
+- **Servidores** (rail à esquerda): cada servidor é um manifesto assinado pelo dono
+  (nome, ícone/foto, canais). Crie com **+** ou entre por **🔗 convite** (o **id
+  curto** do servidor, resolvido via rede).
 - **Canais**: cada servidor tem canais de **texto** (`#`) e de **voz** (`🔊`).
   Cada canal vira uma sala Trystero derivada (`spaceId:channelId`).
 - **Conteúdo**: canal de texto mostra o chat; canal de voz mostra o palco de vídeo.
@@ -75,20 +78,31 @@ npm run dev      # abre o Electron (sem rebuild)
 3. Cliquem no canal de voz **🔊 Sala de Voz** → **Entrar na voz**. Ativem câmera/tela.
 4. Troquem mensagens nos canais de texto (`#geral`, `#random`).
 
-## Gerar executável Windows
+## Build e releases (Windows)
 
-```bash
-npm run pack:win
-```
+O instalador Windows é gerado **no CI** (GitHub Actions), que também **publica na
+Release** do GitHub e alimenta o **auto-updater**.
 
-Gera `release/P2P Chat-win32-x64/` (app desempacotado, ~265 MB). Zipe a pasta e
-envie para outra pessoa — ela só extrai e roda `P2P Chat.exe`, sem instalar nada.
+Para lançar uma versão:
 
-> Usamos **@electron/packager** (não electron-builder) de propósito: o
-> electron-builder baixa o `winCodeSign`, que exige criação de symlinks e falha
-> no Windows sem **Modo de Desenvolvedor**. O packager apenas copia o runtime, sem
-> assinatura. O `.exe` não é assinado, então o SmartScreen mostrará um aviso
-> ("Mais informações" → "Executar assim mesmo").
+1. Suba a versão em `package.json` (ex.: `0.3.0`).
+2. Crie e empurre a tag correspondente:
+   ```bash
+   git tag v0.3.0
+   git push origin v0.3.0
+   ```
+3. O workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) roda em
+   `windows-latest`, faz o build com **electron-builder** (NSIS) e publica o
+   instalador + `latest.yml` na Release `v0.3.0`.
+
+**Auto-update:** o app usa `electron-updater` (em `main.js`, só quando empacotado):
+na inicialização e a cada 6h ele checa a Release mais nova no GitHub, baixa em
+segundo plano e instala ao fechar. Notifica o usuário quando há atualização.
+
+> Build local do instalador (`npm run dist:win`) exige o **Modo de Desenvolvedor**
+> do Windows ativado (o `winCodeSign` do electron-builder cria symlinks). No CI
+> isso não é problema. O `.exe` não é assinado por ora, então o SmartScreen mostra
+> um aviso ("Mais informações" → "Executar assim mesmo").
 
 ## Testar entre redes diferentes
 
