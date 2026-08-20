@@ -27,7 +27,8 @@ const dmDel = {}; // pub -> excluir mensagem
 const dmIdentsByKey = {}; // dmKey -> { peerId -> ident }
 const dmUnread = {}; // pub -> nº de não lidas
 const dmAesKey = {}; // partnerPub -> chave AES-GCM (E2E)
-const dmOutbox = {}; // partnerPub -> mensagens pendentes (sem chave ainda)
+const dmOutbox = {}; // partnerPub -> mensagens de saída pendentes (sem chave ainda)
+const dmPendingIn = {}; // partnerPub -> mensagens recebidas antes de ter a chave
 const dmRawSend = {}; // partnerPub -> função crua de envio (para flush)
 
 // presença em canais de voz (ver quem está na call sem entrar)
@@ -239,6 +240,33 @@ function flushDMOutbox(pub) {
   out.forEach(({ text, img, id }) => sendEncDM(send, key, text, img, id));
   dmOutbox[pub] = [];
 }
+// decifra e exibe uma mensagem de DM recebida (retorna true se consumida)
+async function decryptAndPushDM(pub, k, payload, senderNick) {
+  const key = dmAesKey[pub];
+  if (!key) return false;
+  let data;
+  try {
+    data = JSON.parse(await identity.aesDecrypt(key, payload.iv, payload.ct));
+  } catch (e) {
+    return true; // não decifrou: não é do par / adulterado
+  }
+  if (!validText(data.text) || !validImg(data.img)) return true;
+  if (deletedIdsByChannel[k]?.has(payload.id)) return true;
+  pushMsg(k, senderNick, data.text, false, true, data.img, { id: payload.id, authorPub: pub });
+  if (!(mode === 'dm' && currentDM && currentDM.pub === pub)) {
+    dmUnread[pub] = (dmUnread[pub] || 0) + 1;
+    renderRail();
+    if (mode === 'dm') renderChannels();
+  }
+  return true;
+}
+// reprocessa mensagens que chegaram antes de a chave existir
+function flushDMInbox(pub, k) {
+  const q = dmPendingIn[pub];
+  if (!q || !q.length) return;
+  dmPendingIn[pub] = [];
+  q.forEach(({ payload, nick }) => decryptAndPushDM(pub, k, payload, nick));
+}
 
 // Junta na sala da DM em 2º plano (recebe mesmo sem estar aberta). Conteúdo E2E.
 async function joinDMRoom(pub, nick) {
@@ -253,6 +281,7 @@ async function joinDMRoom(pub, nick) {
       try {
         dmAesKey[pub] = await identity.deriveAesKey(id.dhPub);
         flushDMOutbox(pub);
+        flushDMInbox(pub, k);
       } catch (e) {}
     }
   });
@@ -266,27 +295,18 @@ async function joinDMRoom(pub, nick) {
   };
   get(async (payload, pid) => {
     if (typeof payload.iv !== 'string' || typeof payload.ct !== 'string') return;
-    let key = dmAesKey[pub];
-    if (!key && idents[pid]?.dhPub) {
+    // tenta derivar a chave do ident já conhecido
+    if (!dmAesKey[pub] && idents[pid]?.dhPub) {
       try {
-        key = dmAesKey[pub] = await identity.deriveAesKey(idents[pid].dhPub);
+        dmAesKey[pub] = await identity.deriveAesKey(idents[pid].dhPub);
       } catch (e) {}
     }
-    if (!key) return;
-    let data;
-    try {
-      data = JSON.parse(await identity.aesDecrypt(key, payload.iv, payload.ct));
-    } catch (e) {
-      return; // não decifrou: não é do parceiro / adulterado
+    // ainda sem chave? enfileira e processa quando a identidade chegar
+    if (!dmAesKey[pub]) {
+      (dmPendingIn[pub] = dmPendingIn[pub] || []).push({ payload, nick: idents[pid]?.nick || nick });
+      return; // processa quando a chave chegar (flushDMInbox)
     }
-    if (!validText(data.text) || !validImg(data.img)) return;
-    if (deletedIdsByChannel[k]?.has(payload.id)) return;
-    pushMsg(k, idents[pid]?.nick || nick, data.text, false, true, data.img, { id: payload.id, authorPub: pub });
-    if (!(mode === 'dm' && currentDM && currentDM.pub === pub)) {
-      dmUnread[pub] = (dmUnread[pub] || 0) + 1;
-      renderRail();
-      if (mode === 'dm') renderChannels();
-    }
+    await decryptAndPushDM(pub, k, payload, idents[pid]?.nick || nick);
   });
   const [sendDel, getDel] = room.makeAction('del');
   dmDel[pub] = async (id) => {
@@ -316,8 +336,8 @@ async function startInbox() {
   inboxRoom = joinRoom({ appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } }, 'inbox:' + myHash);
   const [, getDM] = inboxRoom.makeAction('dm');
   getDM(async (msg) => {
-    if (!msg || !msg.pub || msg.pub === identity.pub()) return;
-    addDM(msg.pub, msg.nick || msg.pub.slice(0, 6));
+    if (!msg || !msg.pub || typeof msg.pub !== 'string' || msg.pub === identity.pub()) return;
+    addDM(msg.pub, clampStr(msg.nick, MAX_NICK) || msg.pub.slice(0, 6));
     await joinDMRoom(msg.pub, msg.nick);
     if (mode === 'dm') renderChannels();
     renderRail();
@@ -335,7 +355,7 @@ async function sendDMInvite(pub, nick) {
     try {
       room.leave();
     } catch (e) {}
-  }, 15000);
+  }, 30000);
 }
 
 // Inicia uma DM (a partir do perfil): registra, entra na sala e convida o outro.
