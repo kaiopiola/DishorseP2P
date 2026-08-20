@@ -80,24 +80,25 @@ npm run dev      # abre o Electron (sem rebuild)
 
 ## Build e releases (Windows)
 
-O instalador Windows é gerado **no CI** (GitHub Actions), que também **publica na
-Release** do GitHub e alimenta o **auto-updater**.
+O instalador Windows é gerado **no CI** (GitHub Actions). O workflow
+[`.github/workflows/build.yml`](.github/workflows/build.yml) roda **a cada push na
+`main`** (inclusive merges de PR) e também manualmente, em `windows-latest`, faz o
+build com **electron-builder** (NSIS) e sobe o instalador + `latest.yml` para uma
+**Release rascunho (draft)** no GitHub, na versão do `package.json`.
 
-Para lançar uma versão:
+Fluxo:
 
-1. Suba a versão em `package.json` (ex.: `0.3.0`).
-2. Crie e empurre a tag correspondente:
-   ```bash
-   git tag v0.3.0
-   git push origin v0.3.0
-   ```
-3. O workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) roda em
-   `windows-latest`, faz o build com **electron-builder** (NSIS) e publica o
-   instalador + `latest.yml` na Release `v0.3.0`.
+1. Trabalhe via PR e faça merge na `main` → o CI builda e atualiza a Release
+   rascunho da versão atual.
+2. Quando quiser **lançar**, abra a Release rascunho no GitHub e clique em
+   **Publish** — só então o instalador fica público.
+3. Para uma **nova versão** (que o auto-updater vai distribuir), suba a versão em
+   `package.json` (ex.: `0.3.0` → `0.3.1`) antes do merge.
 
 **Auto-update:** o app usa `electron-updater` (em `main.js`, só quando empacotado):
-na inicialização e a cada 6h ele checa a Release mais nova no GitHub, baixa em
-segundo plano e instala ao fechar. Notifica o usuário quando há atualização.
+na inicialização e a cada 6h checa a Release **publicada** mais nova no GitHub,
+baixa em segundo plano e instala ao fechar. Uma Release em rascunho não é
+distribuída até ser publicada, e só versões maiores que a instalada disparam update.
 
 > Build local do instalador (`npm run dist:win`) exige o **Modo de Desenvolvedor**
 > do Windows ativado (o `winCodeSign` do electron-builder cria symlinks). No CI

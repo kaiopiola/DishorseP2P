@@ -1,11 +1,12 @@
 name: Build Windows
 
-# Dispara ao empurrar uma tag "vX.Y.Z" (a versão deve bater com package.json),
-# ou manualmente pela aba Actions.
+# Dispara a cada push na main (inclusive merges de PR) e manualmente.
+# A Release publicada leva a versão do package.json — bump a versão para
+# lançar uma atualização que o auto-updater vai distribuir.
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
