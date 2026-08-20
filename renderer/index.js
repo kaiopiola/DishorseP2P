@@ -20,6 +20,16 @@ let dmList = [];
 try {
   dmList = JSON.parse(localStorage.getItem('p2pDMs') || '[]');
 } catch (e) {}
+let inboxRoom = null; // caixa de entrada (recebe convites de DM)
+const dmRooms = {}; // pub -> sala da DM (mantida em 2º plano)
+const dmSend = {}; // pub -> enviar mensagem
+const dmDel = {}; // pub -> excluir mensagem
+const dmIdentsByKey = {}; // dmKey -> { peerId -> ident }
+const dmUnread = {}; // pub -> nº de não lidas
+
+// presença em canais de voz (ver quem está na call sem entrar)
+const presenceRooms = {}; // channelKey -> sala 'vpres:<key>'
+const presenceMembers = {}; // channelKey -> { peerId -> {pub,nick,verified} }
 
 // texto
 let textRoom = null;
@@ -200,17 +210,110 @@ function selectDMMode() {
   if (currentDM) selectDM(currentDM.pub, currentDM.nick);
   else showEmpty();
 }
+// Junta na sala da DM em 2º plano (recebe mensagens mesmo sem estar aberta).
+async function joinDMRoom(pub, nick) {
+  if (dmRooms[pub]) return;
+  const k = await dmKey(pub);
+  const room = joinRoom({ appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } }, 'text:' + k);
+  dmRooms[pub] = room;
+  const idents = (dmIdentsByKey[k] = dmIdentsByKey[k] || {});
+  const announce = attachHandshake(room, idents);
+  const [send, get] = room.makeAction('chat');
+  dmSend[pub] = async (text, img) => {
+    const id = msgId();
+    const sig = await identity.sign(signContent(text, img));
+    send({ text, img, sig, id });
+    return id;
+  };
+  get(async (payload, pid) => {
+    if (deletedIdsByChannel[k]?.has(payload.id)) return;
+    const idn = idents[pid];
+    const nm = idn?.nick || pid.slice(0, 6);
+    const verified = idn
+      ? await identity.verify(idn.pub, payload.sig, signContent(payload.text, payload.img))
+      : false;
+    pushMsg(k, nm, payload.text, false, verified, payload.img, { id: payload.id, authorPub: idn?.pub });
+    if (!(mode === 'dm' && currentDM && currentDM.pub === pub)) {
+      dmUnread[pub] = (dmUnread[pub] || 0) + 1;
+      renderRail();
+      if (mode === 'dm') renderChannels();
+    }
+  });
+  const [sendDel, getDel] = room.makeAction('del');
+  dmDel[pub] = async (id) => {
+    const sig = await identity.sign('del:' + id);
+    sendDel({ id, sig });
+  };
+  getDel(async (payload) => {
+    const m = (messagesByChannel[k] || []).find((x) => x.id === payload.id);
+    if (!m) return (deletedIdsByChannel[k] || (deletedIdsByChannel[k] = new Set())).add(payload.id);
+    const ok = m.authorPub && (await identity.verify(m.authorPub, payload.sig, 'del:' + payload.id));
+    if (ok) {
+      m.deleted = true;
+      if (k === textRoomKey) renderMessages(k);
+    }
+  });
+  room.onPeerJoin((pid) => {
+    announce(pid);
+    setTimeout(() => {
+      if (!idents[pid]) announce(pid);
+    }, 2500);
+  });
+}
+
+// Caixa de entrada: quem quer te mandar DM avisa aqui; você passa a receber.
+async function startInbox() {
+  const myHash = await identity.hashId(identity.pub());
+  inboxRoom = joinRoom({ appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } }, 'inbox:' + myHash);
+  const [, getDM] = inboxRoom.makeAction('dm');
+  getDM(async (msg) => {
+    if (!msg || !msg.pub || msg.pub === identity.pub()) return;
+    addDM(msg.pub, msg.nick || msg.pub.slice(0, 6));
+    await joinDMRoom(msg.pub, msg.nick);
+    if (mode === 'dm') renderChannels();
+    renderRail();
+  });
+}
+
+// Avisa o inbox do outro que quero conversar.
+async function sendDMInvite(pub, nick) {
+  const theirHash = await identity.hashId(pub);
+  const room = joinRoom({ appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } }, 'inbox:' + theirHash);
+  const [sendDM] = room.makeAction('dm');
+  const fire = () => sendDM({ pub: identity.pub(), nick: myNick() });
+  room.onPeerJoin(fire);
+  setTimeout(() => {
+    try {
+      room.leave();
+    } catch (e) {}
+  }, 15000);
+}
+
+// Inicia uma DM (a partir do perfil): registra, entra na sala e convida o outro.
+async function startDM(pub, nick) {
+  addDM(pub, nick);
+  await joinDMRoom(pub, nick);
+  sendDMInvite(pub, nick);
+  selectDM(pub, nick);
+}
+
 async function selectDM(pub, nick) {
   mode = 'dm';
   addDM(pub, nick);
   currentDM = { pub, nick };
+  dmUnread[pub] = 0;
+  await joinDMRoom(pub, nick);
   const k = await dmKey(pub);
   viewKey = k;
+  textRoomKey = k;
+  sendChat = dmSend[pub];
+  textSendDel = dmDel[pub];
   textView.classList.remove('hidden');
   voiceView.classList.add('hidden');
   emptyView.classList.add('hidden');
+  $('welcomeView').classList.add('hidden');
   $('textTitle').textContent = '@' + nick;
-  joinText(k);
+  renderMessages(k);
   renderRail();
   renderChannels();
 }
@@ -236,9 +339,109 @@ function renderDMList() {
     nm.className = 'nm';
     nm.textContent = d.nick;
     row.append(av, nm);
+    if (dmUnread[d.pub]) {
+      const badge = document.createElement('span');
+      badge.className = 'dm-badge';
+      badge.textContent = dmUnread[d.pub];
+      row.append(badge);
+    }
     row.onclick = () => selectDM(d.pub, d.nick);
     channelList.append(row);
   });
+}
+
+// ========================================================================
+//  PRESENÇA EM CANAIS DE VOZ
+// ========================================================================
+// Quem está na call se anuncia (announcePresence); quem só visualiza observa.
+function joinPresence(k) {
+  if (presenceRooms[k]) return;
+  const room = joinRoom({ appId: APP_ID, rtcConfig: { iceServers: buildIceServers() } }, 'vpres:' + k);
+  presenceRooms[k] = room;
+  presenceMembers[k] = presenceMembers[k] || {};
+  const [sendIdent, getIdent] = room.makeAction('ident');
+  const [sendGone, getGone] = room.makeAction('gone');
+  room.__presSend = sendIdent;
+  room.__presGone = sendGone;
+  getIdent(async (msg, pid) => {
+    const verified = await identity.verify(msg.pub, msg.sig, msg.pub);
+    presenceMembers[k][pid] = { pub: msg.pub, nick: msg.nick, verified };
+    if (mode === 'server') renderChannels();
+  });
+  getGone((msg) => {
+    if (!msg || !msg.pub) return;
+    for (const pid in presenceMembers[k]) {
+      if (presenceMembers[k][pid].pub === msg.pub) delete presenceMembers[k][pid];
+    }
+    if (mode === 'server') renderChannels();
+  });
+  room.onPeerJoin((pid) => {
+    if (voice && voice.key === k) announcePresence(k, pid);
+  });
+  room.onPeerLeave((pid) => {
+    delete presenceMembers[k][pid];
+    if (mode === 'server') renderChannels();
+  });
+}
+async function announcePresence(k, target) {
+  const room = presenceRooms[k];
+  if (!room) return;
+  const sig = await identity.sign(identity.pub());
+  room.__presSend({ pub: identity.pub(), nick: myNick(), sig }, target);
+}
+function gonePresence(k) {
+  const room = presenceRooms[k];
+  if (room && room.__presGone) room.__presGone({ pub: identity.pub() });
+}
+function presenceMemberEl(pid, m) {
+  const d = document.createElement('div');
+  d.className = 'voice-member';
+  const av = document.createElement('div');
+  av.className = 'avatar';
+  av.textContent = initialOf(m.nick);
+  av.style.background = `hsl(${hueOf(m.pub || pid)} 55% 45%)`;
+  const nm = document.createElement('span');
+  nm.className = 'vm-name';
+  nm.textContent = m.nick;
+  d.append(av, nm);
+  const right = document.createElement('span');
+  right.className = 'vm-right';
+  if (m.verified) {
+    const b = document.createElement('span');
+    b.className = 'verified';
+    b.textContent = '✓';
+    right.append(b);
+  }
+  const sp = getSpace(currentSpaceId);
+  if (sp && store.isOwner(sp) && m.pub && m.pub !== identity.pub()) {
+    const ban = document.createElement('button');
+    ban.className = 'vm-ban';
+    ban.textContent = '✕';
+    ban.title = 'Banir do servidor';
+    ban.onclick = (e) => {
+      e.stopPropagation();
+      banUser(m.pub);
+    };
+    right.append(ban);
+  }
+  d.append(right);
+  d.onclick = () => openProfileByPub(m.pub, m.nick, m.verified);
+  return d;
+}
+function openProfileByPub(pub, nick, verified) {
+  const el = $('profileAvatar');
+  el.style.backgroundImage = 'none';
+  el.style.backgroundColor = `hsl(${hueOf(pub || nick)} 55% 45%)`;
+  el.textContent = initialOf(nick);
+  $('profileNick').textContent = nick + (verified ? ' ✓' : '');
+  $('profileFp').textContent = pub ? '#' + identity.fingerprint(pub) : '';
+  $('profileBioView').textContent = 'Sem bio.';
+  profileViewPub = pub;
+  profileViewNick = nick;
+  $('profileMessage').style.display = pub && pub !== identity.pub() ? '' : 'none';
+  $('profileEdit').style.display = 'none';
+  $('profileView').style.display = '';
+  openModal('profileModal');
 }
 
 // ========================================================================
@@ -267,14 +470,27 @@ function renderChannels() {
   channelList.appendChild(catLabel('Canais de voz', editable ? () => openChannelModal('voice') : null));
   voices.forEach((c) => {
     channelList.appendChild(channelEl(sp.id, c));
-    if (voice && voice.key === key(sp.id, c.id)) {
-      const wrap = document.createElement('div');
-      wrap.className = 'voice-members';
+    const ck = key(sp.id, c.id);
+    joinPresence(ck); // observa quem está na call
+    if (voice && voice.key === ck) {
+      // conectado: usa participantes de mídia (com estado/fala) + eu
       const others = Object.keys(voiceParticipants).filter(
         (p) => p !== 'local' && !isBannedPub(voiceParticipants[p]?.pub)
       );
+      const wrap = document.createElement('div');
+      wrap.className = 'voice-members';
       ['local', ...others].forEach((pid) => wrap.appendChild(voiceMemberEl(pid)));
       channelList.appendChild(wrap);
+    } else {
+      // não conectado: mostra presença (quem está na call)
+      const members = presenceMembers[ck] || {};
+      const pids = Object.keys(members).filter((pid) => !isBannedPub(members[pid].pub));
+      if (pids.length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'voice-members';
+        pids.forEach((pid) => wrap.appendChild(presenceMemberEl(pid, members[pid])));
+        channelList.appendChild(wrap);
+      }
     }
   });
 }
@@ -620,6 +836,8 @@ async function joinVoice(spaceId, ch) {
   ensureParticipant('local');
   focusedKey = 'local';
   joinVoiceChat(k); // chat lateral da sala
+  joinPresence(k); // presença (para os outros verem que entrei)
+  announcePresence(k); // anuncia a quem já está observando o canal
   await applyMic(); // voz por padrão ao entrar
   updateVoiceStatus();
   showVoiceView(spaceId, ch);
@@ -628,6 +846,7 @@ async function joinVoice(spaceId, ch) {
 
 function leaveVoice() {
   if (!voice) return;
+  gonePresence(voice.key); // avisa que saí da call
   stopPipLoop();
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   leaveVoiceChat();
@@ -935,7 +1154,7 @@ function enforceBans() {
   });
 }
 async function banUser(pub) {
-  const sp = getSpace(voice?.spaceId);
+  const sp = getSpace(currentSpaceId);
   if (!sp || !store.isOwner(sp) || !pub) return;
   if (!sp.banned) sp.banned = [];
   if (!sp.banned.includes(pub)) sp.banned.push(pub);
@@ -1987,7 +2206,7 @@ function openPeerProfile(pid) {
 $('profileMessage').onclick = () => {
   if (!profileViewPub) return;
   closeModal('profileModal');
-  selectDM(profileViewPub, profileViewNick);
+  startDM(profileViewPub, profileViewNick);
 };
 $('meBar').querySelector('.me-info').onclick = openMyProfile;
 $('profileCancel').onclick = () => closeModal('profileModal');
@@ -2277,6 +2496,8 @@ function boot() {
   renderMeBar();
   renderRail();
   startAllDiscovery(); // mantém os servidores "descobríveis" por id
+  startInbox(); // recebe convites de DM
+  dmList.forEach((d) => joinDMRoom(d.pub, d.nick)); // DMs ativas em 2º plano
   if (!spaces.length) {
     mode = 'server';
     renderChannels();

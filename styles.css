@@ -47,6 +47,7 @@ input, select, button { font-family: inherit; }
 .server-icon.add:hover { background: var(--green); color: #fff; }
 .server-icon.home { font-size: 22px; }
 .avatar.dm-av { width: 26px; height: 26px; font-size: 12px; }
+.dm-badge { margin-left: auto; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 7px; }
 .rail-sep { width: 32px; height: 2px; background: var(--line); border-radius: 1px; margin: 2px 0; }
 
 /* ---- Coluna 2: canais ---- */

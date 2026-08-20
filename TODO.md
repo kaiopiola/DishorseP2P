@@ -120,6 +120,9 @@ Decisões tomadas:
       lista de DMs; "Enviar mensagem" no perfil de um membro inicia a conversa
 - [x] Lista de conversas privadas (localStorage) separada dos servidores
 - [x] Assinadas/verificadas como os canais (transporte P2P via DTLS)
+- [x] **CORRIGIDO**: DMs agora funcionam nos dois sentidos — caixa de entrada
+      ('inbox:<hash pub>') recebe convites; salas de DM ficam ativas em 2º plano
+      (recebe mesmo sem abrir); contador de não-lidas na lista
 - [ ] (futuro) E2E com ECDH (hoje qualquer um que conheça as 2 chaves poderia
       entrar na sala; restringir ao peer esperado + cifrar com chave derivada)
 - [ ] (futuro) imagens/histórico nas DMs já funcionam (reusam o chat); faltam
@@ -146,9 +149,11 @@ Decisões tomadas:
 - [ ] (Opcional) nó "de fixação" headless para ancorar histórico/presença
 
 ## 🌐 Milestone 5 — Presença e descoberta
-- [ ] Presença: quem está em cada canal de voz sem precisar entrar
-- [ ] Lista de membros do servidor (online/offline)
-- [ ] Notificações (menções, mensagens novas)
+- [x] **Presença em canais de voz**: sala leve 'vpres:<canal>' — quem está na call
+      se anuncia (announce/gone); quem visualiza o servidor vê a lista mesmo sem
+      entrar. Ban e perfil funcionam a partir da lista de presença.
+- [ ] Lista de membros do servidor (online/offline) fora da voz
+- [ ] Notificações (menções, mensagens novas) — DM já tem contador de não-lidas
 
 ## 📈 Milestone 6 — Escala
 - [ ] Avaliar limite do mesh (~6-8) e caminho para grupos grandes
